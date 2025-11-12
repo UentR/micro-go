@@ -1,0 +1,60 @@
+# dune build @all
+# OCAMLPARAM: unset
+# Shared cache: enabled-except-user-rules
+# Shared cache location: /home/quentin/.cache/dune/db
+# Workspace root: /mnt/c/Users/riggi/Programmation/micro-go
+# Auto-detected concurrency: 16
+# Dune context:
+#  { name = "default"
+#  ; kind = "default"
+#  ; profile = Dev
+#  ; merlin = true
+#  ; fdo_target_exe = None
+#  ; build_dir = In_build_dir "default"
+#  ; instrument_with = []
+#  }
+$ /usr/bin/ocamlc.opt -config > /tmp/dune_43db92_output
+$ (cd _build/default && /home/quentin/.opam/default/bin/menhir --explain --dump mgoparser.mly --base mgoparser --infer-write-query mgoparser__mock.ml.mock)
+> File "mgoparser.mly", line 20, characters 11-14:
+> Warning: the token AND is unused.
+> File "mgoparser.mly", line 19, characters 7-13:
+> Warning: the token ASSIGN is unused.
+> File "mgoparser.mly", line 15, characters 7-12:
+> Warning: the token COLON is unused.
+> File "mgoparser.mly", line 17, characters 18-21:
+> Warning: the token DIV is unused.
+> File "mgoparser.mly", line 15, characters 19-22:
+> Warning: the token DOT is unused.
+> File "mgoparser.mly", line 18, characters 10-12:
+> Warning: the token GT is unused.
+> File "mgoparser.mly", line 14, characters 7-11:
+> Warning: the token LPAR is unused.
+> File "mgoparser.mly", line 18, characters 7-9:
+> Warning: the token LT is unused.
+> File "mgoparser.mly", line 17, characters 7-12:
+> Warning: the token MINUS is unused.
+> File "mgoparser.mly", line 20, characters 7-10:
+> Warning: the token MOD is unused.
+> File "mgoparser.mly", line 16, characters 7-10:
+> Warning: the token NOT is unused.
+> File "mgoparser.mly", line 20, characters 15-17:
+> Warning: the token OR is unused.
+> File "mgoparser.mly", line 17, characters 13-17:
+> Warning: the token PLUS is unused.
+> File "mgoparser.mly", line 14, characters 12-16:
+> Warning: the token RPAR is unused.
+> File "mgoparser.mly", line 65, characters 0-4:
+> Warning: symbol expr is unreachable from any of the start symbol(s).
+> File "mgoparser.mly", line 69, characters 0-9:
+> Warning: symbol expr_desc is unreachable from any of the start symbol(s).
+$ (cd _build/default && /usr/bin/ocamllex -q -o mgolexer.ml mgolexer.mll)
+> File "mgolexer.mll", line 27, character 16:
+> Reference to unbound regexp name `DOT'.
+[2]
+$ (cd _build/default && /usr/bin/ocamldep.opt -modules -impl mgoparser__mock.ml.mock) > _build/default/.mgoc.eobjs/mgoparser__mock.impl.d
+$ (cd _build/.sandbox/6201b21873448d533e31f4523c285e42/default && /usr/bin/ocamlc.opt -w @1..3@5..28@30..39@43@46..47@49..57@61..62-40 -strict-sequence -strict-formats -short-paths -keep-locs -warn-error -A -g -I .mgoc.eobjs/byte -open Dune__exe -short-paths -i -impl mgoparser__mock.ml.mock) > _build/.sandbox/6201b21873448d533e31f4523c285e42/default/mgoparser__mock.mli.inferred
+> File "mgoparser.mly", line 49, characters 47-49:
+> Error: This expression has type (ident * typ) list
+>        but an expression was expected of type 'a list list
+>        Type ident * typ is not compatible with type 'a list 
+[2]
