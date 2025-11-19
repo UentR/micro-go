@@ -1,9 +1,10 @@
-package main
+package main;
 
-import "fmt"
+import "fmt";
 
 /* a, b entiers naturels, b > 0 */
-func div1(a, b int) (int, int) {
+// Probleme (int, int)
+func div1(a, b int) (int, int) { 
 	if a < b {
 		return 0, a
 	} else {
