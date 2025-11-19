@@ -46,8 +46,6 @@
 %token EOF
 
 /* === PRIORITÉS (Ordre croissant) === */
-%nonassoc NO_ELSE
-%nonassoc ELSE
 %left OR
 %left AND
 %left EQ NEQ LT LE GT GE
@@ -148,29 +146,15 @@ simple_stmt:
 
 /* Expression seule (appel de fonction) */
 | e=expr { mk_instr (Expr e) $startpos $endpos }
-
-/* Cas spécial fmt.Print qui est une "expression" primitive mais instruction */
-| fmt_str=IDENT DOT print_str=IDENT LPAR es=separated_list(COMMA, expr) RPAR
-    { 
-       if fmt_str = "fmt" && print_str = "Print" then
-         let e = mk_expr (Print es) $startpos $endpos in
-         mk_instr (Expr e) $startpos $endpos 
-       else
-         let fmt_id = mk_ident fmt_str $startpos(fmt_str) $endpos(fmt_str) in
-         let print_id = mk_ident print_str $startpos(print_str) $endpos(print_str) in
-         let e_fmt = mk_expr_loc (Var fmt_id) fmt_id.loc in
-         let e_dot = mk_expr (Dot(e_fmt, print_id)) $startpos $endpos in
-         mk_instr (Expr e_dot) $startpos $endpos
-    }
 ;
 
 compound_stmt:
 | b=block { mk_instr (Block b) $startpos $endpos }
 
 /* IF / ELSE avec priorités pour le Dangling Else */
-| IF c=expr b1=block %prec NO_ELSE 
+| IF c=expr b1=block 
     { mk_instr (If(c, b1, [])) $startpos $endpos }
-| IF c=expr b1=block ELSE b2=compound_stmt_or_block
+| IF c=expr b1=block ELSE b2=compound_stmt
     { 
        match b2.idesc with
        | Block b -> mk_instr (If(c, b1, b)) $startpos $endpos (* else { ... } -> If(..., b) *)
@@ -201,11 +185,6 @@ compound_stmt:
     { mk_instr (Vars(ids, Some t, [mk_instr (Set(List.map (fun id -> mk_expr_loc (Var id) id.loc) ids, es)) $startpos $endpos])) $startpos $endpos }
 ;
 
-/* Helper pour le else : accepte soit un bloc, soit un autre if */
-compound_stmt_or_block:
-| b=block { mk_instr (Block b) $startpos $endpos }
-| i=compound_stmt { match i.idesc with If _ -> i | _ -> raise Error }
-;
 
 simple_stmt_opt:
 | /* empty */ { None }
@@ -226,6 +205,12 @@ expr_desc:
 | id=ident      { Var(id) }
 | e=expr DOT id=ident { Dot(e, id) }
 | NEW LPAR s=IDENT RPAR { New(s) }
+| e=expr DOT id=ident LPAR es=separated_list(COMMA, expr) RPAR 
+    { 
+      match e.edesc with
+      | Var v when v.id = "fmt" && id.id = "Print" -> Print(es)
+      | _ -> raise Error (* L'AST Call ne supporte que Call(ident), pas expr.ident *)
+    }
 | id=ident LPAR es=separated_list(COMMA, expr) RPAR { Call(id, es) }
 | MINUS e=expr %prec UMINUS { Unop(Opp, e) }
 | NOT e=expr                { Unop(Not, e) }
@@ -233,7 +218,7 @@ expr_desc:
 | LPAR e=expr_desc RPAR { e }
 ;
 
-op:
+%inline op:
 | PLUS  { Add }
 | MINUS { Sub }
 | STAR  { Mul }
