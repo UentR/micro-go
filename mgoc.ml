@@ -34,24 +34,28 @@ let () =
     let f = Mgoparser.prog Mgolexer.token lb in
     close_in c;
     if !parse_only then exit 0;
-    let () = Typechecker.prog  f in
+    let f = Typechecker.prog  f in
     if !type_only then exit 0;
 
   with
     | Mgolexer.Error s ->
-      report_loc (lexeme_start_p lb, lexeme_end_p lb);
-      eprintf "lexical error: %s\n@." s;
-      exit 1 
+	report_loc (lexeme_start_p lb, lexeme_end_p lb);
+	eprintf "lexical error: %s\n@." s;
+	exit 1
     | Mgoparser.Error ->
-      report_loc (lexeme_start_p lb, lexeme_end_p lb);
-      eprintf "syntax error\n@.";
-      exit 1
+	report_loc (lexeme_start_p lb, lexeme_end_p lb);
+	eprintf "syntax error\n@.";
+	exit 1
+    | Parsing.Parse_error ->
+	report_loc (lexeme_start_p lb, lexeme_end_p lb);
+	eprintf "syntax error\n@.";
+	exit 1
     | Typechecker.Error (l, msg) ->
-      report_loc l;
-      eprintf "error: %s\n@." msg;
-      exit 1
+	report_loc l;
+	eprintf "error: %s\n@." msg;
+	exit 1
     | e ->
-      eprintf "Anomaly: %s\n@." (Printexc.to_string e);
-      exit 2
+	eprintf "Anomaly: %s\n@." (Printexc.to_string e);
+	exit 2
 
 
