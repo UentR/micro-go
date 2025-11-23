@@ -8,9 +8,9 @@ func main() {
   n = 9;
   acc = 1;
   for (n != 0) {
-    if (n%2 != 0) { acc = a*acc }; 
+    if (n%2 != 0) { acc = a*acc; }; 
     a = a*a;
-    n = n/2
+    n = n/2;
   }
   fmt.Print(acc);
-};
+}

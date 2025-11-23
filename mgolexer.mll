@@ -30,6 +30,13 @@
       with Not_found -> IDENT(s)
         
   let buf = Buffer.create 1024
+
+  let last_token = ref EOF
+
+  (* Fonction wrapper pour mémoriser le token avant de le renvoyer *)
+  let return_token t =
+    last_token := t;
+    t
 }
 
 let digit = ['0'-'9']
@@ -39,26 +46,31 @@ let ident = alpha (alpha | digit)*
 let number = digit+ | ("0x" | "0X") hex+
 
 rule token = parse
-  | ['\n']            { new_line lexbuf; token lexbuf }
+  | ['\n']            { new_line lexbuf; match !last_token with
+                        | IDENT _ | INT _ | BOOL _ | STRING _ | NIL | RETURN | INC | DEC | RPAR | RBRACKET ->
+                        last_token := SEMI; (* Important : on ne veut pas réinsérer un ; au prochain \n *)
+                        SEMI
+                        | _ -> token lexbuf  (* On ignore le \n *)
+                      }
   | [' ' '\t' '\r']+  { token lexbuf }
   | "//" [^ '\n']* { token lexbuf }
   | "/*"              { comment lexbuf; token lexbuf }
   | '"'               { Buffer.clear buf; string lexbuf; STRING (Buffer.contents buf) }
   
-  | number as n       { try INT(Int64.of_string n) with _ -> raise (Error "literal constant too large") }
-  | ident as id       { keyword_or_ident id }
+  | number as n       { try return_token (INT(Int64.of_string n)) with _ -> raise (Error "literal constant too large") }
+  | ident as id       { return_token (keyword_or_ident id) }
 
-  | ";"  { SEMI }
-  | "("  { LPAR }     
-  | ")"  { RPAR }
-  | "{"  { LBRACKET }    
-  | "}"  { RBRACKET }
-  | ","  { COMMA }    
-  | "."  { DOT }
+  | ";"  { return_token SEMI }
+  | "("  { return_token LPAR }     
+  | ")"  { return_token RPAR }
+  | "{"  { return_token LBRACKET }    
+  | "}"  { return_token RBRACKET }
+  | ","  { return_token COMMA }    
+  | "."  { return_token DOT }
 
-  | "+"   { PLUS } 
-  | "-"   { MINUS } 
-  | "*"   { STAR } 
+  | "+"   { return_token PLUS } 
+  | "-"   { return_token MINUS } 
+  | "*"   { return_token STAR } 
   | "/"   { DIV } 
   | "%"   { MOD }
   | "++"  { INC }  
@@ -76,7 +88,7 @@ rule token = parse
   | "=" { EQ_ASSIGN }
 
   | _    { raise (Error ("unknown character : " ^ lexeme lexbuf)) }
-  | eof  { EOF }
+  | eof  { return_token EOF }
 
 and comment = parse
   | "*/" { () }
