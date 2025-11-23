@@ -32,6 +32,7 @@
   let buf = Buffer.create 1024
 
   let last_token = ref EOF
+  let next_token = ref None
 
   (* Fonction wrapper pour mémoriser le token avant de le renvoyer *)
   let mem_token t =
@@ -45,16 +46,28 @@ let hex   = ['0'-'9' 'a'-'f' 'A'-'F']
 let ident = alpha (alpha | digit)*
 let number = digit+ | ("0x" | "0X") hex+
 
-rule token = parse
+rule real_token = parse
   | ['\n']            { new_line lexbuf; match !last_token with
                         | IDENT _ | INT _ | BOOL _ | STRING _ | NIL | RETURN | INC | DEC | RPAR | RBRACKET | TINT | TBOOL | TSTRING ->
                         last_token := SEMI; (* Important : on ne veut pas réinsérer un ; au prochain \n *)
                         SEMI
-                        | _ -> token lexbuf  (* On ignore le \n *)
+                        | _ -> real_token lexbuf  (* On ignore le \n *)
                       }
-  | [' ' '\t' '\r']+  { token lexbuf }
-  | "//" [^ '\n']*    { token lexbuf }
-  | "/*"              { comment lexbuf; token lexbuf }
+  | "}"  { 
+      match !last_token with
+      | IDENT _ | INT _ | BOOL _ | STRING _ | NIL | RETURN | INC | DEC |
+        RPAR | RBRACKET | TINT | TBOOL | TSTRING ->
+          (* Cas où on doit insérer un point-virgule avant le } *)
+          next_token := Some RBRACKET; (* On garde le } pour la prochaine fois *)
+          last_token := SEMI;          (* On dit qu'on a émis un ; *)
+          SEMI                         (* On renvoie le ; *)
+      | _ -> 
+          mem_token RBRACKET 
+    }
+
+  | [' ' '\t' '\r']+  { real_token lexbuf }
+  | "//" [^ '\n']*    { real_token lexbuf }
+  | "/*"              { comment lexbuf; real_token lexbuf }
   | '"'               { Buffer.clear buf; string lexbuf; mem_token (STRING (Buffer.contents buf)) }
   
   | number as n       { try mem_token (INT(Int64.of_string n)) with _ -> raise (Error "literal constant too large") }
@@ -64,7 +77,6 @@ rule token = parse
   | "("  { mem_token LPAR }     
   | ")"  { mem_token RPAR }
   | "{"  { mem_token LBRACKET }    
-  | "}"  { mem_token RBRACKET }
   | ","  { mem_token COMMA }    
   | "."  { mem_token DOT }
 
@@ -105,3 +117,14 @@ and string = parse
   | [^ '"' '\\']+ as s { Buffer.add_string buf s; string lexbuf }
   | _     { raise (Error "illegal string character") }
   | eof   { raise (Error "unterminated string") }
+
+{
+  (* Fonction principale appelée par le parser *)
+  let token lexbuf =
+    match !next_token with
+    | Some t -> 
+        next_token := None; (* On vide le tampon *)
+        mem_token t         (* On renvoie le token stocké (RBRACKET) *)
+    | None -> 
+        real_token lexbuf   (* Sinon on lit normalement *)
+}
