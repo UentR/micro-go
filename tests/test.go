@@ -1,3 +1,3 @@
-package main;
-import "fmt";
-type S struct { loop *S };
+package main
+
+type S struct{ loop *S }

@@ -1,4 +1,5 @@
-package main;
-import "fmt";
+package main
 
-func main() { fmt.Print(42) };
+import "fmt"
+
+func main() { fmt.Print(42) }

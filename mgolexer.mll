@@ -34,7 +34,7 @@
   let last_token = ref EOF
 
   (* Fonction wrapper pour mémoriser le token avant de le renvoyer *)
-  let return_token t =
+  let mem_token t =
     last_token := t;
     t
 }
@@ -47,48 +47,48 @@ let number = digit+ | ("0x" | "0X") hex+
 
 rule token = parse
   | ['\n']            { new_line lexbuf; match !last_token with
-                        | IDENT _ | INT _ | BOOL _ | STRING _ | NIL | RETURN | INC | DEC | RPAR | RBRACKET ->
+                        | IDENT _ | INT _ | BOOL _ | STRING _ | NIL | RETURN | INC | DEC | RPAR | RBRACKET | TINT | TBOOL | TSTRING ->
                         last_token := SEMI; (* Important : on ne veut pas réinsérer un ; au prochain \n *)
                         SEMI
                         | _ -> token lexbuf  (* On ignore le \n *)
                       }
   | [' ' '\t' '\r']+  { token lexbuf }
-  | "//" [^ '\n']* { token lexbuf }
+  | "//" [^ '\n']*    { token lexbuf }
   | "/*"              { comment lexbuf; token lexbuf }
-  | '"'               { Buffer.clear buf; string lexbuf; STRING (Buffer.contents buf) }
+  | '"'               { Buffer.clear buf; string lexbuf; mem_token (STRING (Buffer.contents buf)) }
   
-  | number as n       { try return_token (INT(Int64.of_string n)) with _ -> raise (Error "literal constant too large") }
-  | ident as id       { return_token (keyword_or_ident id) }
+  | number as n       { try mem_token (INT(Int64.of_string n)) with _ -> raise (Error "literal constant too large") }
+  | ident as id       { mem_token (keyword_or_ident id) }
 
-  | ";"  { return_token SEMI }
-  | "("  { return_token LPAR }     
-  | ")"  { return_token RPAR }
-  | "{"  { return_token LBRACKET }    
-  | "}"  { return_token RBRACKET }
-  | ","  { return_token COMMA }    
-  | "."  { return_token DOT }
+  | ";"  { mem_token SEMI }
+  | "("  { mem_token LPAR }     
+  | ")"  { mem_token RPAR }
+  | "{"  { mem_token LBRACKET }    
+  | "}"  { mem_token RBRACKET }
+  | ","  { mem_token COMMA }    
+  | "."  { mem_token DOT }
 
-  | "+"   { return_token PLUS } 
-  | "-"   { return_token MINUS } 
-  | "*"   { return_token STAR } 
-  | "/"   { DIV } 
-  | "%"   { MOD }
-  | "++"  { INC }  
-  | "--"  { DEC }
-  | "=="  { EQ }   
-  | "!="  { NEQ }   
-  | "<"   { LT }   
-  | "<="  { LE }  
-  | ">"   { GT } 
-  | ">="  { GE }
-  | "&&"  { AND }  
-  | "||"  { OR }    
-  | "!"   { NOT }
-  | ":="  { COLONEQ } 
-  | "=" { EQ_ASSIGN }
+  | "+"   { mem_token PLUS } 
+  | "-"   { mem_token MINUS } 
+  | "*"   { mem_token STAR } 
+  | "/"   { mem_token DIV } 
+  | "%"   { mem_token MOD }
+  | "++"  { mem_token INC }  
+  | "--"  { mem_token DEC }
+  | "=="  { mem_token EQ }   
+  | "!="  { mem_token NEQ }   
+  | "<"   { mem_token LT }   
+  | "<="  { mem_token LE }  
+  | ">"   { mem_token GT } 
+  | ">="  { mem_token GE }
+  | "&&"  { mem_token AND }  
+  | "||"  { mem_token OR }    
+  | "!"   { mem_token NOT }
+  | ":="  { mem_token COLONEQ } 
+  | "="   { mem_token EQ_ASSIGN }
 
   | _    { raise (Error ("unknown character : " ^ lexeme lexbuf)) }
-  | eof  { return_token EOF }
+  | eof  { mem_token EOF }
 
 and comment = parse
   | "*/" { () }
