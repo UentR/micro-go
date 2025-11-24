@@ -10,21 +10,54 @@ let new_label =
 let rec tr_expr e = match e.edesc with
   | Int(n)  -> li t0 (Int64.to_int n)   (* on supposera que les constantes entières
                                            sont représentables sur 32 bits *)
-  | String(s) -> failwith "A compléter" (* allocation des chaînes dans la zone de données statiques *)
-  | Var(id) -> failwith "A compléter"
+  | Bool(b) -> li t0 (if b then 1 else 0) (* Booléens: 0 ou 1 *)
+  | String(s) -> failwith "Chaînes à faire plus tard (allocation statique)"
+  | Var(id) -> failwith "Variables à faire plus tard"
   | Binop(bop, e1, e2) ->
     let op = match bop with
       | Add -> add
+      | Sub -> sub
       | Mul -> mul
+      | Div -> div
+      | Rem -> rem
       | Lt  -> slt
+      | Le  -> sle
+      | Gt  -> sgt
+      | Ge  -> sge
+      | Eq  -> seq
+      | Neq -> sne
       | And -> and_
-      | _ -> failwith "A compléter"
+      | Or  -> or_
+      (* Note: Pour And/Or, MIPS n'a pas de && court-circuité par défaut, 
+         mais 'and' bit-à-bit fonctionne si on utilise 0 et 1 pour bool *)
     in
-    tr_expr e2
-    @@ push t0
-    @@ tr_expr e1
-    @@ pop t1
-    @@ op t0 t0 t1
+    tr_expr e2        (* 1. Calculer partie droite *)
+    @@ push t0        (* 2. Sauvegarder sur la pile *)
+    @@ tr_expr e1     (* 3. Calculer partie gauche (résultat dans t0) *)
+    @@ pop t1         (* 4. Récupérer partie droite dans t1 *)
+    @@ op t0 t0 t1    (* 5. t0 = t0 op t1 *)
+
+  | Unop(Opp, e) ->
+      tr_expr e
+      @@ Mips.S "  neg $t0, $t0" (* Négation arithmétique *)
+      
+  | Unop(Not, e) ->
+      tr_expr e
+      @@ xor t0 t0 t0 (* Si t0=1 -> 0, si t0=0 -> 1 ? Non. *)
+      (* Astuce MIPS pour NOT logique sur 0/1 : seq $t0, $t0, 0 *)
+      @@ seq t0 t0 0
+  | Print(exps) -> 
+      let rec print_args = function
+        | [] -> nop
+        | e::es -> 
+            tr_expr e          (* Calcule e -> résultat dans $t0 *)
+            @@ move a0 t0      (* Déplace $t0 dans $a0 pour syscall *)
+            @@ li v0 1         (* Code 1: print_int *)
+            @@ syscall 
+            @@ print_args es
+      in
+      print_args exps 
+      @@ li t0 0
   | _ -> failwith "A compléter"
 
 
@@ -67,4 +100,4 @@ let rec tr_ldecl = function
   | _ :: p -> tr_ldecl p
   | [] -> nop
 
-let tr_prog p =  { text = tr_ldecl p ; data = (failwith "A compléter") }
+let tr_prog p =  { text = tr_ldecl p ; data = nop }

@@ -14,7 +14,7 @@ let v0 = "$v0"
 let sp = "$sp"
 let ra = "$ra"
 
-  open Printf
+open Printf
 let li   r1 i      = S(sprintf "  li   %s, %i"     r1 i)
 let la   r1 x      = S(sprintf "  la   %s, %s"     r1 x)
 let move r1 r2     = S(sprintf "  move %s, %s"     r1 r2)
@@ -24,6 +24,19 @@ let addi r1 r2 i   = S(sprintf "  addi %s, %s, %d" r1 r2 i)
 let mul  r1 r2 r3  = S(sprintf "  mul  %s, %s, %s" r1 r2 r3)
 let slt  r1 r2 r3  = S(sprintf "  slt  %s, %s, %s" r1 r2 r3)
 let and_ r1 r2 r3  = S(sprintf "  and  %s, %s, %s" r1 r2 r3)
+
+let sub  r1 r2 r3  = S(sprintf "  sub  %s, %s, %s" r1 r2 r3)
+let div  r1 r2 r3  = S(sprintf "  div  %s, %s, %s" r1 r2 r3) (* Division signée *)
+let rem  r1 r2 r3  = S(sprintf "  rem  %s, %s, %s" r1 r2 r3)
+
+let seq  r1 r2 r3  = S(sprintf "  seq  %s, %s, %s" r1 r2 r3) (* Set equal *)
+let sne  r1 r2 r3  = S(sprintf "  sne  %s, %s, %s" r1 r2 r3) (* Set not equal *)
+let sle  r1 r2 r3  = S(sprintf "  sle  %s, %s, %s" r1 r2 r3)
+let sge  r1 r2 r3  = S(sprintf "  sge  %s, %s, %s" r1 r2 r3)
+let sgt  r1 r2 r3  = S(sprintf "  sgt  %s, %s, %s" r1 r2 r3)
+let or_  r1 r2 r3  = S(sprintf "  or   %s, %s, %s" r1 r2 r3)
+let xor  r1 r2 r3  = S(sprintf "  xor  %s, %s, %s" r1 r2 r3)
+let not_ r1 r2     = S(sprintf "  not  %s, %s"     r1 r2)
 
 let j    l         = S(sprintf "  j    %s"         l)
 let jal  l         = S(sprintf "  jal  %s"         l)
@@ -42,7 +55,7 @@ let lw   r1 o r2   = S(sprintf "  lw   %s, %d(%s)" r1 o r2)
 let sw   r1 o r2   = S(sprintf "  sw   %s, %d(%s)" r1 o r2)
 let lbu  r1 o r2   = S(sprintf "  lbu  %s, %d(%s)" r1 o r2)
 
-let ilist = function
+let rec ilist = function
     | []     -> ""
     | [i]    -> sprintf "%d" i
     | i :: l -> sprintf "%d, %s" i (ilist l)
