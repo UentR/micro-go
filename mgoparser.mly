@@ -129,8 +129,8 @@ instr:
 
 simple_stmt:
 /* Affectation : x, y = e1, e2 */
-| l=separated_nonempty_list(COMMA, expr) EQ_ASSIGN r=separated_nonempty_list(COMMA, expr)
-    { mk_instr (Set(l, r)) $startpos $endpos }
+| l=separated_nonempty_list(COMMA, expr) EQ_ASSIGN r=separated_nonempty_list(COMMA, expr) 
+{ mk_instr (Set(l, r)) $startpos $endpos }
 
 /* Déclaration courte : x, y := e1, e2 
    On parse 'expr' à gauche pour éviter le conflit avec '=', puis on vérifie que ce sont des variables */
