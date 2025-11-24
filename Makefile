@@ -6,13 +6,13 @@ $(EXE): *.ml*
 	dune build @all
 
 test: $(EXE) tests/test.go
-	-./$(EXE) --parse-only tests/arith.go
-	-./$(EXE) --parse-only tests/div.go
-	-./$(EXE) --parse-only tests/instr.go
-	-./$(EXE) --parse-only tests/min.go
-	-./$(EXE) --parse-only tests/point.go
-	-./$(EXE) --parse-only tests/test.go
-	-./$(EXE) --parse-only tests/var.go
+	-./$(EXE) tests/arith.go
+	-./$(EXE) tests/div.go
+	-./$(EXE) tests/instr.go
+	-./$(EXE) tests/min.go
+	-./$(EXE) tests/point.go
+	-./$(EXE) tests/test.go
+	-./$(EXE) tests/var.go
 
 .PHONY: clean
 

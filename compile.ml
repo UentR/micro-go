@@ -89,11 +89,22 @@ and tr_instr i = match i.idesc with
     @@ label test_label
     @@ tr_expr c
     @@ bnez t0 code_label
+  | Expr e -> 
+    tr_expr e  (* On génère le code de l'expression *)
+      
+  | Block s -> 
+    tr_seq s
   | _ -> failwith "A compléter"
 
 let tr_fun df =
-       label df.fname.id
-    @@ tr_seq df.body
+  let code_corps = tr_seq df.body in
+  let code_final = 
+    if df.fname.id = "main" then
+      code_corps @@ li v0 10 @@ syscall (* Ajout de l'exit pour le main *)
+    else
+      code_corps @@ jr ra (* Retour classique pour les autres fonctions (à gérer plus tard si besoin) *)
+  in
+  label df.fname.id @@ code_final
 
 let rec tr_ldecl = function
     Fun df::p -> tr_fun df @@ tr_ldecl p

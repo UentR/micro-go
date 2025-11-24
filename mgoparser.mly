@@ -157,8 +157,8 @@ compound_stmt:
 | IF c=expr b1=block ELSE b2=compound_stmt
     { 
        match b2.idesc with
-       | Block b -> mk_instr (If(c, b1, b)) $startpos $endpos (* else { ... } -> If(..., b) *)
-       | If _ -> mk_instr (If(c, b1, [b2])) $startpos $endpos (* else if ... -> If(..., [If...]) *)
+       | Block b -> mk_instr (If(c, b1, b)) $startpos $endpos
+       | If _ -> mk_instr (If(c, b1, [b2])) $startpos $endpos
        | _ -> raise Error 
     }
 
