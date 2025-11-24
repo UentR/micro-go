@@ -45,7 +45,7 @@ let rec tr_expr e = match e.edesc with
       tr_expr e
       @@ xor t0 t0 t0 (* Si t0=1 -> 0, si t0=0 -> 1 ? Non. *)
       (* Astuce MIPS pour NOT logique sur 0/1 : seq $t0, $t0, 0 *)
-      @@ seq t0 t0 0
+      @@ seq t0 t0 "0"
   | Print(exps) -> 
       let rec print_args = function
         | [] -> nop
@@ -74,7 +74,7 @@ and tr_instr i = match i.idesc with
     tr_expr c
     @@ bnez t0 then_label
     @@ tr_seq s2
-    @@ b end_label
+    @@ j end_label
     @@ label then_label
     @@ tr_seq s1
     @@ label end_label
@@ -83,7 +83,7 @@ and tr_instr i = match i.idesc with
     let test_label = new_label()
     and code_label = new_label()
     in
-    b test_label
+    j test_label
     @@ label code_label
     @@ tr_seq s
     @@ label test_label
