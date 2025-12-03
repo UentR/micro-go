@@ -8,6 +8,7 @@ let (@@) x y = C (x, y)
 type program = { text: asm; data: asm; }
 
 (* --- AJOUTS ICI --- *)
+let s0 = "$s0"
 let t0 = "$t0"
 let t1 = "$t1"
 let t2 = "$t2"

@@ -119,4 +119,40 @@ _label_1:
 main_exit:
   li   $v0, 10
   syscall
+print_struct_point:
+  beqz $a0, _label_4
+  addi $sp, $sp, -4
+  sw   $s0, 0($sp)
+  move $s0, $a0
+  la   $a0, _label_5
+  li   $v0, 4
+  syscall
+  lw   $a0, 0($s0)
+  li   $v0, 1
+  syscall
+  la   $a0, _label_8
+  li   $v0, 4
+  syscall
+  lw   $a0, 4($s0)
+  li   $v0, 1
+  syscall
+  la   $a0, _label_6
+  li   $v0, 4
+  syscall
+  lw   $s0, 0($sp)
+  addi $sp, $sp, 4
+  jr   $ra
+_label_4:
+  la   $a0, _label_7
+  li   $v0, 4
+  syscall
+  jr   $ra
 .data
+_label_8:
+  .asciiz " "
+_label_7:
+  .asciiz "<nil>"
+_label_6:
+  .asciiz "}"
+_label_5:
+  .asciiz "&{"

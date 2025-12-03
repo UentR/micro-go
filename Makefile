@@ -42,4 +42,4 @@ mips: test
 
 clean:
 	dune clean
-	rm -f *~ tests/*~
+	rm -f *~ tests/*.s

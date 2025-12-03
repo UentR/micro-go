@@ -9,9 +9,9 @@ func main() {
 	y = 6
 	x = x + 2
 	y = y * (x + 4)
-	fmt.Print(y)
+	fmt.Print(x, y)
 
 	var s string
 	s = "Test"
-	fmt.Print(s)
+	fmt.Print(s, s, s)
 }

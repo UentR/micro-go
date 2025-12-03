@@ -56,6 +56,14 @@ main:
   lw   $t1, 0($sp)
   addi $sp, $sp, 4
   sw   $t1, 0($t0)
+  addi $t0, $fp, -4
+  lw   $t0, 0($t0)
+  move $a0, $t0
+  li   $v0, 1
+  syscall
+  li   $a0, 32
+  li   $v0, 11
+  syscall
   addi $t0, $fp, -8
   lw   $t0, 0($t0)
   move $a0, $t0
@@ -72,6 +80,22 @@ main:
   lw   $t1, 0($sp)
   addi $sp, $sp, 4
   sw   $t1, 0($t0)
+  addi $t0, $fp, -12
+  lw   $t0, 0($t0)
+  move $a0, $t0
+  li   $v0, 4
+  syscall
+  li   $a0, 32
+  li   $v0, 11
+  syscall
+  addi $t0, $fp, -12
+  lw   $t0, 0($t0)
+  move $a0, $t0
+  li   $v0, 4
+  syscall
+  li   $a0, 32
+  li   $v0, 11
+  syscall
   addi $t0, $fp, -12
   lw   $t0, 0($t0)
   move $a0, $t0
