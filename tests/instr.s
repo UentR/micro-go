@@ -43,7 +43,8 @@ _label_1:
   lw   $t0, 0($t0)
   lw   $t1, 0($sp)
   addi $sp, $sp, 4
-  rem  $t0, $t0, $t1
+  div  $t0, $t1
+  mfhi $t0
   lw   $t1, 0($sp)
   addi $sp, $sp, 4
   sne  $t0, $t0, $t1
@@ -88,7 +89,8 @@ _label_3:
   lw   $t0, 0($t0)
   lw   $t1, 0($sp)
   addi $sp, $sp, 4
-  div  $t0, $t0, $t1
+  div  $t0, $t1
+  mflo $t0
   addi $sp, $sp, -4
   sw   $t0, 0($sp)
   addi $t0, $fp, -8

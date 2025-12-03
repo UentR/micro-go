@@ -10,4 +10,8 @@ func main() {
 	x = x + 2
 	y = y * (x + 4)
 	fmt.Print(y)
+
+	var s string
+	s = "Test"
+	fmt.Print(s)
 }

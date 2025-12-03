@@ -22,7 +22,8 @@ main:
   mul  $t0, $t0, $t1
   lw   $t1, 0($sp)
   addi $sp, $sp, 4
-  div  $t0, $t0, $t1
+  div  $t0, $t1
+  mflo $t0
   addi $sp, $sp, -4
   sw   $t0, 0($sp)
   li   $t0, 2

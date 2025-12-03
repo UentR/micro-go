@@ -8,6 +8,15 @@ main:
   li   $v0, 9
   syscall
   move $t0, $v0
+  li   $t1, 0
+_label_2:
+  li   $t2, 8
+  bge  $t1, $t2, _label_3
+  add  $t2, $t0, $t1
+  sw   $zero, 0($t2)
+  addi $t1, $t1, 4
+  j    _label_2
+_label_3:
   addi $sp, $sp, -4
   sw   $t0, 0($sp)
   addi $t0, $fp, -4
@@ -21,6 +30,15 @@ main:
   li   $v0, 9
   syscall
   move $t0, $v0
+  li   $t1, 0
+_label_0:
+  li   $t2, 8
+  bge  $t1, $t2, _label_1
+  add  $t2, $t0, $t1
+  sw   $zero, 0($t2)
+  addi $t1, $t1, 4
+  j    _label_0
+_label_1:
   addi $sp, $sp, -4
   sw   $t0, 0($sp)
   addi $t0, $fp, -8

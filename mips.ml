@@ -10,6 +10,7 @@ type program = { text: asm; data: asm; }
 (* --- AJOUTS ICI --- *)
 let t0 = "$t0"
 let t1 = "$t1"
+let t2 = "$t2"
 let a0 = "$a0"
 let v0 = "$v0"
 let sp = "$sp"
@@ -28,8 +29,10 @@ let mul  r1 r2 r3  = S(sprintf "  mul  %s, %s, %s" r1 r2 r3)
 let slt  r1 r2 r3  = S(sprintf "  slt  %s, %s, %s" r1 r2 r3)
 let and_ r1 r2 r3  = S(sprintf "  and  %s, %s, %s" r1 r2 r3)
 let sub  r1 r2 r3  = S(sprintf "  sub  %s, %s, %s" r1 r2 r3)
-let div  r1 r2 r3  = S(sprintf "  div  %s, %s, %s" r1 r2 r3)
-let rem  r1 r2 r3  = S(sprintf "  rem  %s, %s, %s" r1 r2 r3)
+
+let div  r1 r2 r3  = S(sprintf "  div  %s, %s\n  mflo %s" r2 r3 r1)
+let rem  r1 r2 r3  = S(sprintf "  div  %s, %s\n  mfhi %s" r2 r3 r1)
+
 let seq  r1 r2 r3  = S(sprintf "  seq  %s, %s, %s" r1 r2 r3)
 let sne  r1 r2 r3  = S(sprintf "  sne  %s, %s, %s" r1 r2 r3)
 let sle  r1 r2 r3  = S(sprintf "  sle  %s, %s, %s" r1 r2 r3)

@@ -62,7 +62,25 @@ main:
   li   $v0, 1
   syscall
   li   $t0, 0
+  li   $t0, 0
+  addi $sp, $sp, -4
+  sw   $t0, 0($sp)
+  la   $t0, _label_0
+  addi $sp, $sp, -4
+  sw   $t0, 0($sp)
+  addi $t0, $fp, -12
+  lw   $t1, 0($sp)
+  addi $sp, $sp, 4
+  sw   $t1, 0($t0)
+  addi $t0, $fp, -12
+  lw   $t0, 0($t0)
+  move $a0, $t0
+  li   $v0, 4
+  syscall
+  li   $t0, 0
 main_exit:
   li   $v0, 10
   syscall
 .data
+_label_0:
+  .asciiz "Test"
