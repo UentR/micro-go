@@ -7,6 +7,15 @@ let new_label =
   fun () -> incr cpt;
   Printf.sprintf "_label_%i" !cpt
 
+(* --- Gestion des Chaînes de caractères (Data segment) --- *)
+(* Liste mutable pour stocker les couples (label, contenu) *)
+let strings = ref []
+
+let add_string s =
+  let l = new_label () in
+  strings := (l, s) :: !strings;
+  l
+
 (* --- Gestion des Structures (Layout) --- *)
 module StringMap = Map.Make(String)
 
@@ -26,34 +35,28 @@ let compute_struct_layout s =
   { size = total_size; offsets = offsets }
 
 (* --- Gestion des Fonctions (Signatures) --- *)
-type func_sig = {
-  nargs: int;
-  nrets: int;
-}
-(* Table globale des fonctions pour connaître leur arité au moment de l'appel *)
+type func_sig = { nargs: int; nrets: int; }
 let func_table = ref StringMap.empty
 
 (* --- Environnement de Compilation --- *)
 type env = {
-  vars : int StringMap.t;     (* id -> offset par rapport à $fp *)
-  next_local : int;           (* prochain offset dispo pour locale (négatif) *)
-  exit_label : string;        (* label de sortie de la fonction *)
-  ret_ptr_offsets : int list; (* Offsets ($fp) des pointeurs pour retours multiples (vide si nrets <= 1) *)
+  vars : int StringMap.t; (* id -> offset par rapport à $fp *)
+  next_local : int;       (* prochain offset dispo pour locale (négatif) *)
+  exit_label : string;    (* label de sortie de la fonction *)
+  ret_ptr_offsets : int list; (* Offsets ($fp) des pointeurs pour retours multiples *)
 }
 
 let empty_env = { 
-  vars = StringMap.empty; 
+  vars = StringMap.empty;
   next_local = -4; 
   exit_label = ""; 
   ret_ptr_offsets = [] 
 }
 
-(* Récupère la signature d'une fonction *)
 let get_func_sig id =
   try StringMap.find id !func_table
   with Not_found -> 
-    (* Cas des fonctions primitives ou intrinsèques si besoin, sinon erreur *)
-    Printf.eprintf "Fatal error: Fonction inconnue '%s' lors de la compilation\n" id;
+    Printf.eprintf "Fatal error: Fonction inconnue '%s'\n" id;
     exit 2
 
 (* --- Compilation des Expressions --- *)
@@ -63,7 +66,7 @@ let rec tr_addr env e = match e.edesc with
   | Var id ->
       (try
         let offset = StringMap.find id.id env.vars in
-        addi t0 "fp" offset
+        addi t0 fp offset
        with Not_found -> 
          Printf.eprintf "Fatal error: Variable inconnue '%s'\n" id.id; exit 2)
   
@@ -71,6 +74,9 @@ let rec tr_addr env e = match e.edesc with
       tr_expr env e_struct
       @@ (match e_struct.edesc with
           | _ -> 
+            (* On supprime la ligne 'let struct_name = ...' qui causait l'erreur *)
+            
+            (* Recherche du champ 'id' dans toutes les structures connues *)
             let offset = 
               StringMap.fold (fun _ layout acc -> 
                 if StringMap.mem id.id layout.offsets 
@@ -89,8 +95,8 @@ and tr_expr env e = match e.edesc with
   | Int(n)  -> li t0 (Int64.to_int n)
   | Bool(b) -> li t0 (if b then 1 else 0)
   | Nil     -> li t0 0
-  | String(_) -> 
-      let l = new_label() in
+  | String(s) -> 
+      let l = add_string s in (* CORRECTION: Ajout à la table des chaînes *)
       la t0 l 
 
   | Var _ -> 
@@ -102,20 +108,17 @@ and tr_expr env e = match e.edesc with
       li a0 layout.size
       @@ li v0 9      (* sbrk *)
       @@ syscall
+      (* On pourrait initialiser la mémoire à 0 ici si nécessaire (Go le garantit) *)
       @@ move t0 v0
 
   | Dot _ ->
       tr_addr env e @@ lw t0 0 t0
 
   | Call (f, args) ->
-      (* Cas standard (1 retour) ou expression (0 retour). 
-         Si nrets > 1, c'est géré dans Set/Vars ou Print, pas ici (sauf erreur typage). *)
       let sig_f = get_func_sig f.id in
       if sig_f.nrets > 1 then (
-         Printf.eprintf "Fatal error: Appel à '%s' (multi-return) dans un contexte d'expression simple non supporté (sauf Print)\n" f.id;
-         exit 2
+         Printf.eprintf "Fatal error: Appel à '%s' (multi-return) dans expr simple\n" f.id; exit 2
       );
-      
       let push_args = 
         List.fold_left (fun acc arg -> 
           acc @@ tr_expr env arg @@ push t0
@@ -126,8 +129,8 @@ and tr_expr env e = match e.edesc with
       @@ addi sp sp (4 * List.length args)
       @@ move t0 v0
 
-  | Unop(Opp, e) -> tr_expr env e @@ sub t0 "0" t0
-  | Unop(Not, e) -> tr_expr env e @@ seq t0 t0 "0"
+  | Unop(Opp, e) -> tr_expr env e @@ sub t0 zero t0 (* CORRECTION: 0 - t0 avec registre zero *)
+  | Unop(Not, e) -> tr_expr env e @@ seq t0 t0 zero (* CORRECTION: t0 == 0 -> 1, t0 != 0 -> 0 *)
 
   | Binop(bop, e1, e2) ->
       let op = match bop with
@@ -147,116 +150,49 @@ and tr_expr env e = match e.edesc with
             | Call(f, args) ->
                 let sig_f = get_func_sig f.id in
                 if sig_f.nrets > 1 then
-                  (* Cas Spécial : Print(f()) où f retourne plusieurs valeurs *)
-                  (* 1. Allouer de la place pour les résultats (temps) *)
-                  let size_rets = sig_f.nrets * 4 in
-                  addi sp sp (-size_rets) (* Réserve l'espace *)
-                  
-                  (* 2. Empiler les arguments de la fonction *)
+                  (* Cas Multi-return Print *)
+                  let n = sig_f.nrets in
+                  (* 1. Allouer place résultats *)
+                  addi sp sp (-4 * n)
+                  @@ move t1 sp (* t1 pointe sur le début des résultats *)
+                  (* 2. Empiler args *)
                   @@ (List.fold_left (fun acc arg -> acc @@ tr_expr env arg @@ push t0) nop args)
-                  
-                  (* 3. Empiler les adresses des résultats *)
-                  (* Les résultats sont à $sp + (nargs*4) + 0, +4... 
-                     MAIS $sp bouge avec les push des args.
-                     Calculons les adresses RELATIVES avant le call. *)
-                  (* On push les pointeurs. L'ordre importe peu tant que tr_fun et ici sont d'accord.
-                     Convention : on push &res1, &res2... *)
+                  (* 3. Empiler adresses des slots de retour *)
                   @@ (
-                    let rec push_ptrs i =
-                      if i >= sig_f.nrets then nop
+                    let nargs = List.length args in
+                    let rec loop i =
+                      if i >= n then nop
                       else
-                        (* Adresse du slot i : il est actuellement à $sp + (args_size) + (i*4) *)
-                        (* Mais on a déjà pushé 'args'. Donc sp est plus bas. *)
-                        (* Simplification : Utilisons $fp ou calculons. *)
-                        (* Mieux : calculons l'adresse absolue des slots temporaires et pushons la. *)
-                        (* Les slots ont été alloués tout au début : $sp_init - 4, etc. *)
-                        (* C'est compliqué de suivre SP. 
-                           Astuce : On copie SP dans un registre temp (s0?) ou on calcule. *)
-                        
-                        (* Approche "propre" : *)
-                        (* Stack state: [ ... Old Stack ... | RetSlots (size_rets) | Args (size_args) | Ptrs (current) ] *)
-                        (* L'adresse de RetSlot[i] est : $sp + (size_ptrs_pushed) + size_args + (size_rets - 4 - i*4) ? Non. *)
-                        
-                        (* Faisons simple : 
-                           1. Allouer RetSlots.
-                           2. Calculer leurs adresses et les stocker dans des registres ou les pusher direct ?
-                           Non, on doit pusher les args d'abord.
-                        *)
-                        nop 
-                    in nop
+                        (* Calcul adresse slot i relative à SP actuel *)
+                        addi t0 sp ((nargs * 4) + (i * 4))
+                        @@ push t0
+                        @@ loop (i + 1)
+                    in loop 0
                   )
-                  (* RE-APPROCHE SIMPLE pour Print(multi-return) : 
-                     On a besoin de N slots.
-                     1. On calcule l'adresse de ces N slots (sur la pile actuelle).
-                     2. On push les args.
-                     3. On push les adresses des slots.
-                     4. Call.
-                     5. On clean args + ptrs.
-                     6. On print les valeurs des slots.
-                     7. On clean slots.
-                  *)
-                   @@ (
-                     let n = sig_f.nrets in
-                     (* Allouer N slots *)
-                     addi sp sp (-4 * n)
-                     @@ move t1 sp (* t1 pointe sur le début des résultats *)
-                     
-                     (* Empiler les arguments *)
-                     @@ (List.fold_left (fun acc arg -> 
-                           acc @@ tr_expr env arg @@ push t0
-                        ) nop args)
-                     
-                     (* Empiler les pointeurs vers les slots (qui sont à t1) *)
-                     (* Attention t1 est valide tant qu'on n'y touche pas. tr_expr touche t1.
-                        On doit être prudent. *)
-                     (* Solution : On calcule l'adresse de chaque slot RELATIVEMENT à SP actuel. *)
-                     (* SP actuel = SP_apres_slots - (nargs*4).
-                        Les slots sont à : SP_actuel + (nargs*4) + (0..N-1)*4 *)
-                     
-                     @@ (
-                       let nargs = List.length args in
-                       let rec loop i =
-                         if i >= n then nop
-                         else
-                           (* Adresse du slot i (0 à n-1) *)
-                           (* Slot 0 est le premier retour (celui en haut des slots, adresse basse) *)
-                           (* Offset = (nargs * 4) + (n - 1 - i) * 4 si on veut suivre l'ordre d'empilement *)
-                           (* On va dire : slot 0 est à l'adresse la plus basse (SP_apres_slots) *)
-                           (* Offset = (nargs * 4) + (i * 4) *)
-                           addi t0 sp ((nargs * 4) + (i * 4))
-                           @@ push t0
-                           @@ loop (i + 1)
-                       in loop 0
-                     )
-                     
-                     @@ jal f.id
-                     @@ addi sp sp (4 * (List.length args + n)) (* Clean args + ptrs *)
-                     
-                     (* Maintenant on affiche les valeurs stockées dans les slots *)
-                     (* Les slots sont au sommet de la pile (sp pointe dessus) *)
-                     @@ (
-                       let rec print_slots i =
+                  @@ jal f.id
+                  @@ addi sp sp (4 * (List.length args + n)) (* Clean args + ptrs *)
+                  (* 4. Print slots *)
+                  @@ (
+                     let rec print_slots i =
                          if i >= n then nop
                          else
                            lw a0 (i*4) sp
                            @@ li v0 1
                            @@ syscall
                            @@ print_slots (i + 1)
-                       in print_slots 0
-                     )
-                     @@ addi sp sp (4 * n) (* Clean slots *)
-                   )
-
-                else (* Cas simple : Call renvoie 1 valeur *)
+                     in print_slots 0
+                  )
+                  @@ addi sp sp (4 * n) (* Clean slots *)
+                else
                   tr_expr env e @@ move a0 t0 @@ li v0 1 @@ syscall 
 
-            | _ -> (* Cas simple : Expression standard *)
+            | _ -> 
               tr_expr env e
               @@ move a0 t0
               @@ li v0 1 (* Print integer *)
               @@ syscall 
             )
-            @@ print_args es
+           @@ print_args es
       in
       print_args exps @@ li t0 0
 
@@ -264,60 +200,52 @@ and tr_expr env e = match e.edesc with
 
 let rec tr_seq env = function
   | []   -> nop
-  | [i]  -> tr_instr env i
   | i::s -> tr_instr env i @@ tr_seq env s
 
 and tr_instr env i = match i.idesc with 
   | Expr e -> tr_expr env e
 
   | Set (lvl, el) ->
-      (* Détection du cas spécial : Appel multi-return unique à droite *)
       (match el with
        | [{edesc = Call(f, args); _}] when (get_func_sig f.id).nrets > 1 ->
            let sig_f = get_func_sig f.id in
-           (* Vérification arité (déjà faite par typechecker normalement) *)
-           if List.length lvl <> sig_f.nrets then (
-             Printf.eprintf "Fatal error: Mismatch assignation multi-return\n"; exit 2
-           );
-           
-           (* 1. Empiler les arguments de la fonction *)
+           (* Multi-return assign *)
            let push_args = 
              List.fold_left (fun acc arg -> acc @@ tr_expr env arg @@ push t0) nop args 
            in
-           
-           (* 2. Empiler les adresses des variables de destination *)
            let push_dst_ptrs =
              List.fold_left (fun acc lv -> 
-               acc @@ tr_addr env lv @@ push t0
+               match lv.edesc with
+               | Var {id="_";_} -> (* Gestion variable poubelle '_' : on alloue un slot temp *)
+                   acc @@ addi sp sp (-4) @@ move t0 sp @@ push t0 
+               | _ ->
+                   acc @@ tr_addr env lv @@ push t0
              ) nop lvl
            in
-           
            push_args
            @@ push_dst_ptrs
            @@ jal f.id
-           (* Nettoyage : args + pointeurs *)
+           (* Nettoyage args + pointeurs *)
+           (* Attention: si on a alloué pour '_', il faut dépiler proprement ? 
+              Ici, push_dst_ptrs a fait des push. addi sp sp ... nettoie tout. C'est bon. *)
            @@ addi sp sp (4 * (List.length args + List.length lvl))
 
        | _ -> 
-         (* Cas standard : autant d'expressions que de variables *)
          let push_rhs = 
            List.fold_left (fun code e -> code @@ tr_expr env e @@ push t0) nop el 
          in
          let pop_and_assign = 
            List.fold_right (fun lv code -> 
-              code 
-              @@ tr_addr env lv   (* $t0 = adresse destination *)
-              @@ pop t1           (* $t1 = valeur dépilée *)
-              @@ sw t1 0 t0
+             code 
+             @@ tr_addr env lv   (* $t0 = adresse destination *)
+             @@ pop t1           (* $t1 = valeur dépilée (RHS) *)
+             @@ sw t1 0 t0
            ) lvl nop
          in
          push_rhs @@ pop_and_assign
       )
 
-  (* Déclaration de variables avec initialisation potentiellement multi-return *)
   | Vars (ids, _, seq_body) ->
-      (* Dans l'AST, Vars contient soit une init vide, soit une séquence d'init (Set) *)
-      (* On alloue d'abord l'espace *)
       let new_env, alloc_code = 
         List.fold_left (fun (e, code) id ->
            let offset = e.next_local in
@@ -327,9 +255,6 @@ and tr_instr env i = match i.idesc with
            (ne, code @@ li t0 0 @@ push t0) 
         ) (env, nop) ids
       in
-      
-      (* Le corps (seq_body) contient l'instruction Set d'initialisation si présente *)
-      (* tr_seq utilisera le Set modifié ci-dessus pour gérer le multi-return *)
       alloc_code @@ tr_seq new_env seq_body
 
   | If(c, s1, s2) ->
@@ -356,23 +281,19 @@ and tr_instr env i = match i.idesc with
   | Block s -> tr_seq env s
 
   | Return el ->
-      (* Gestion du retour : simple ou multiple *)
       if env.ret_ptr_offsets <> [] then (
         (* Cas Multi-Return *)
-        (* On doit avoir autant d'expressions que de pointeurs de retour *)
-        
-        (* Cas spécial : Return f() où f retourne plusieurs valeurs (Tail Call style) *)
         match el with
         | [{edesc = Call(f, args); _}] when (get_func_sig f.id).nrets > 1 ->
-            (* On appelle f en lui passant NOS pointeurs de retour *)
+            (* Tail call multi-ret *)
             let push_args = 
                List.fold_left (fun acc arg -> acc @@ tr_expr env arg @@ push t0) nop args 
             in
             let pass_my_ptrs =
                List.fold_left (fun acc off ->
                  acc 
-                 @@ lw t0 off "fp" (* Charge le pointeur reçu *)
-                 @@ push t0        (* Le passe à f *)
+                 @@ lw t0 off fp (* CORRECTION: fp *)
+                 @@ push t0
                ) nop env.ret_ptr_offsets
             in
             push_args
@@ -382,34 +303,30 @@ and tr_instr env i = match i.idesc with
             @@ j env.exit_label
         
         | _ ->
-            (* Cas standard : return e1, e2... *)
-            if List.length el <> List.length env.ret_ptr_offsets then (
-               Printf.eprintf "Fatal error: Return arity mismatch\n"; exit 2
-            );
-            
+            (* Assignation aux pointeurs de retour *)
             List.fold_left2 (fun acc expr ptr_offset ->
               acc
-              @@ tr_expr env expr    (* Calcule la valeur -> $t0 *)
-              @@ lw t1 ptr_offset "fp" (* Charge l'adresse de destination (pointeur) -> $t1 *)
-              @@ sw t0 0 t1          (* Écrit la valeur à l'adresse *)
+              @@ tr_expr env expr
+              @@ lw t1 ptr_offset fp (* CORRECTION: fp *)
+              @@ sw t0 0 t1         
             ) nop el env.ret_ptr_offsets
             @@ j env.exit_label
       ) else (
-        (* Cas Mono-Return (standard) *)
+        (* Cas Mono-Return *)
         match el with
         | [] -> j env.exit_label
         | [e] -> tr_expr env e @@ move v0 t0 @@ j env.exit_label
-        | _ -> Printf.eprintf "Fatal error: Multi-return dans une fonction mono-return ?\n"; exit 2
+        | _ -> Printf.eprintf "Fatal error: Multi-return mismatch\n"; exit 2
       )
 
   | Inc e -> 
       tr_addr env e @@ push t0 
-      @@ lw t0 0 t0 @@ addi t0 t0 1
+      @@ lw t0 0 t0 @@ addi t0 t0 1 (* CORRECTION: addi simple *)
       @@ pop t1 @@ sw t0 0 t1
 
   | Dec e ->
       tr_addr env e @@ push t0 
-      @@ lw t0 0 t0 @@ sub t0 t0 "1" 
+      @@ lw t0 0 t0 @@ addi t0 t0 (-1) (* CORRECTION: addi -1 au lieu de sub "1" *)
       @@ pop t1 @@ sw t0 0 t1
 
 (* --- Compilation des Fonctions et Programme --- *)
@@ -418,26 +335,10 @@ let tr_fun df =
   let sig_f = get_func_sig df.fname.id in
   let exit_lbl = "exit_" ^ df.fname.id in
   
-  (* 1. Calcul des offsets des arguments "classiques" *)
-  (* Stack frame : 
-     ...
-     Arg N (ptr retour M si multi)
-     ...
-     Arg 1
-     Arg 0
-     RA
-     Old FP <- FP
-  *)
-  
-  (* Liste complète des arguments attendus sur la pile : Params explicites + Ptrs implicites *)
   let n_explicit = List.length df.params in
   let n_implicit = if sig_f.nrets > 1 then sig_f.nrets else 0 in
   let total_args = n_explicit + n_implicit in
 
-  (* Environnement initial *)
-  (* Les arguments sont à $fp + 8 + (total_args - 1 - index)*4 *)
-  
-  (* A. Ajouter les paramètres explicites à l'env *)
   let env_params, _ = 
     List.fold_left (fun (e, idx) (id, _) ->
        let off = 8 + 4 * (total_args - 1 - idx) in
@@ -445,47 +346,30 @@ let tr_fun df =
     ) ({ empty_env with exit_label = exit_lbl }, 0) df.params
   in
 
-  (* B. Identifier les offsets des pointeurs de retour implicites *)
   let env_complete = 
     if n_implicit > 0 then
-      let ptr_offsets, _ = 
-        (* Les pointeurs sont après les params explicites. Indices : n_explicit à total_args-1 *)
-        (* Ptr 0 correspond au premier retour. *)
-        (* Si on a pushé args puis ptrs : 
-           Stack: [Arg0 ... ArgK Ptr0 ... PtrM]
-           PtrM est au sommet (adresse basse relative aux args), Ptr0 ensuite...
-           Wait. L'appelant fait : push args; push ptrs.
-           Ordre push : Arg0, Arg1, ..., Ptr0, Ptr1.
-           Stack (basse adresse) : Ptr1, Ptr0, Arg1, Arg0.
-           Donc Ptr1 est le dernier pushé -> $fp+8.
-           Ptr0 -> $fp+12.
-           
-           Donc Ptr_i est à : $fp + 8 + 4 * (n_implicit - 1 - i).
-        *)
-        let rec loop i acc = 
-          if i >= n_implicit then (List.rev acc, i) (* On veut liste [off_ptr0; off_ptr1...] *)
-          else
-             let off = 8 + 4 * (n_implicit - 1 - i) in
-             loop (i + 1) (off :: acc)
-        in loop 0 []
-      in
+      let rec loop i acc = 
+        if i >= n_implicit then (List.rev acc, i)
+        else
+           let off = 8 + 4 * (n_implicit - 1 - i) in
+           loop (i + 1) (off :: acc)
+      in 
+      let ptr_offsets, _ = loop 0 [] in
       { env_params with ret_ptr_offsets = ptr_offsets }
     else
       env_params
   in
 
-  (* 2. Corps de la fonction *)
   let code_corps = tr_seq env_complete df.body in
 
-  (* 3. Assemblage *)
   label df.fname.id
   @@ push ra          
-  @@ push "fp"        
-  @@ move "fp" sp     
+  @@ push fp          (* CORRECTION: fp *)
+  @@ move fp sp       (* CORRECTION: fp *)
   @@ code_corps
   @@ label exit_lbl
-  @@ move sp "fp"     
-  @@ pop "fp"         
+  @@ move sp fp       (* CORRECTION: fp *)
+  @@ pop fp           (* CORRECTION: fp *)
   @@ pop ra           
   @@ jr ra            
 
@@ -498,7 +382,6 @@ let tr_main df =
   @@ syscall
 
 let tr_prog decls =
-  (* Passe 1 : Collecter structures ET signatures de fonctions *)
   List.iter (function
     | Struct s -> 
         let layout = compute_struct_layout s in
@@ -508,8 +391,7 @@ let tr_prog decls =
         let sig_f = { nargs = List.length f.params; nrets = nrets } in
         func_table := StringMap.add f.fname.id sig_f !func_table
   ) decls;
-
-  (* Passe 2 : Compiler *)
+  
   let text_seg = 
     List.fold_left (fun code decl -> 
       match decl with
@@ -519,4 +401,11 @@ let tr_prog decls =
     ) nop decls 
   in
   
-  { text = text_seg; data = nop }
+  (* CORRECTION: Génération du segment de données pour les chaînes *)
+  let data_seg = 
+    List.fold_left (fun acc (lbl, str) -> 
+      acc @@ label lbl @@ asciiz str
+    ) nop !strings
+  in
+  
+  { text = text_seg; data = data_seg }
