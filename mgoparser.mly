@@ -113,7 +113,9 @@ instr_list:
 | i=instr SEMI rest=instr_list 
     { 
       match i.idesc with
-      | Vars(ids, t, []) -> [{ i with idesc = Vars(ids, t, rest) }] 
+      (* CORRECTION : On fusionne 'rest' avec 'seq' même si 'seq' n'est pas vide.
+         Cela permet de gérer le cas 'var' (seq est vide) ET le cas ':=' (seq contient Set) *)
+      | Vars(ids, t, seq) -> [{ i with idesc = Vars(ids, t, seq @ rest) }] 
       | _ -> i :: rest 
     }
 ;

@@ -12,6 +12,7 @@ func div1(a, b int) (int, int) {
 		return x + 1, y
 	}
 }
+
 func div2(a, b int) (int, int) {
 	q := 0
 	for a >= b {
