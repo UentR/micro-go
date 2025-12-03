@@ -146,11 +146,14 @@ and check_seq env s = List.iter (check_instr env) s
 
 let rec returns_all seq =
   List.exists (fun i -> match i.idesc with 
-    Return _ -> true 
-    | If(_,b1,b2) -> returns_all b1 && returns_all b2 
-    | Block b -> returns_all b | _ -> false
+    | Return _ -> true 
+    | If(_, b1, b2) -> returns_all b1 && returns_all b2 
+    | Block b -> returns_all b
+    (* Le cas Vars doit être avant le cas par défaut *)
     | Vars (_, _, s) -> returns_all s 
-    | _ -> false) seq
+    (* Le cas par défaut doit être le tout dernier *)
+    | _ -> false
+  ) seq
 
 (* --- MAIN --- *)
 
