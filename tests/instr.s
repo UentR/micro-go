@@ -1,5 +1,6 @@
 .text
 main:
+  move $fp, $sp
   li   $t0, 0
   addi $sp, $sp, -4
   sw   $t0, 0($sp)

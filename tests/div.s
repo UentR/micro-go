@@ -262,6 +262,7 @@ exit_div3:
   addi $sp, $sp, 4
   jr   $ra
 main:
+  move $fp, $sp
   addi $sp, $sp, -8
   move $t1, $sp
   li   $t0, 45
@@ -288,7 +289,7 @@ main:
   li   $t0, 0
   la   $t0, _label_9
   move $a0, $t0
-  li   $v0, 1
+  li   $v0, 4
   syscall
   li   $t0, 0
   addi $sp, $sp, -8
@@ -317,7 +318,7 @@ main:
   li   $t0, 0
   la   $t0, _label_8
   move $a0, $t0
-  li   $v0, 1
+  li   $v0, 4
   syscall
   li   $t0, 0
   li   $t0, 0
@@ -355,7 +356,7 @@ main:
   li   $t0, 0
   la   $t0, _label_7
   move $a0, $t0
-  li   $v0, 1
+  li   $v0, 4
   syscall
   li   $t0, 0
   addi $t0, $fp, -4
@@ -366,7 +367,7 @@ main:
   li   $t0, 0
   la   $t0, _label_6
   move $a0, $t0
-  li   $v0, 1
+  li   $v0, 4
   syscall
   li   $t0, 0
 main_exit:

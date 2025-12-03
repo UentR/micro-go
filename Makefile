@@ -5,7 +5,7 @@ all: $(EXE)
 $(EXE): *.ml*
 	dune build @all
 
-test:
+test: $(EXE) tests/test.go
 	-./$(EXE) tests/arith.go
 	-./$(EXE) tests/div.go
 	-./$(EXE) tests/instr.go
@@ -36,6 +36,7 @@ mips: test
 	@echo "New File to spim"
 	spim -file tests/var.s
 	@echo "\n"
+
 
 .PHONY: clean
 

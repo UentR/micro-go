@@ -147,31 +147,36 @@ and tr_expr env e = match e.edesc with
         | [] -> nop
         | e::es -> 
             (match e.edesc with
+            (* Cas spécial pour les littéraux chaînes : syscall 4 *)
+            | String _ ->
+                tr_expr env e
+                @@ move a0 t0
+                @@ li v0 4 
+                @@ syscall
+            
+            (* Cas spécial appels multi-retours (inchangé) *)
             | Call(f, args) ->
                 let sig_f = get_func_sig f.id in
                 if sig_f.nrets > 1 then
-                  (* Cas Multi-return Print *)
+                  (* ... (Garder tout le code complexe du print multi-retour ici) ... *)
+                  (* Copier-coller le bloc 'Call' existant de votre code précédent *)
+                  (* Je le résume ici pour la clarté, ne supprimez pas votre logique ! *)
                   let n = sig_f.nrets in
-                  (* 1. Allouer place résultats *)
                   addi sp sp (-4 * n)
-                  @@ move t1 sp (* t1 pointe sur le début des résultats *)
-                  (* 2. Empiler args *)
+                  @@ move t1 sp
                   @@ (List.fold_left (fun acc arg -> acc @@ tr_expr env arg @@ push t0) nop args)
-                  (* 3. Empiler adresses des slots de retour *)
                   @@ (
                     let nargs = List.length args in
                     let rec loop i =
                       if i >= n then nop
                       else
-                        (* Calcul adresse slot i relative à SP actuel *)
                         addi t0 sp ((nargs * 4) + (i * 4))
                         @@ push t0
                         @@ loop (i + 1)
                     in loop 0
                   )
                   @@ jal f.id
-                  @@ addi sp sp (4 * (List.length args + n)) (* Clean args + ptrs *)
-                  (* 4. Print slots *)
+                  @@ addi sp sp (4 * (List.length args + n))
                   @@ (
                      let rec print_slots i =
                          if i >= n then nop
@@ -182,17 +187,18 @@ and tr_expr env e = match e.edesc with
                            @@ print_slots (i + 1)
                      in print_slots 0
                   )
-                  @@ addi sp sp (4 * n) (* Clean slots *)
+                  @@ addi sp sp (4 * n)
                 else
                   tr_expr env e @@ move a0 t0 @@ li v0 1 @@ syscall 
 
+            (* Cas par défaut (entiers, booléens, autres) : syscall 1 *)
             | _ -> 
               tr_expr env e
               @@ move a0 t0
-              @@ li v0 1 (* Print integer *)
+              @@ li v0 1 
               @@ syscall 
             )
-           @@ print_args es
+          @@ print_args es
       in
       print_args exps @@ li t0 0
 
@@ -376,6 +382,7 @@ let tr_fun df =
 let tr_main df =
   let env = { empty_env with exit_label = "main_exit" } in
   label "main"
+  @@ move fp sp   (* <--- CORRECTION IMPORTANTE : Initialiser $fp *)
   @@ tr_seq env df.body
   @@ label "main_exit"
   @@ li v0 10 

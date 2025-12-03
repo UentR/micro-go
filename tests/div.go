@@ -2,11 +2,6 @@ package main
 
 import "fmt"
 
-func test() {
-	a := 4
-	fmt.Print(a)
-}
-
 /* a, b entiers naturels, b > 0 */
 // Probleme (int, int)
 func div1(a, b int) (int, int) {
