@@ -154,13 +154,13 @@ div3:
   li   $t0, 0
   addi $sp, $sp, -4
   sw   $t0, 0($sp)
-  li   $a0, 12
+  li   $a0, 8
   li   $v0, 9
   syscall
   move $t0, $v0
   li   $t1, 0
 _label_6:
-  li   $t2, 12
+  li   $t2, 8
   bge  $t1, $t2, _label_7
   add  $t2, $t0, $t1
   sw   $zero, 0($t2)
@@ -384,12 +384,6 @@ print_struct_res:
   li   $v0, 4
   syscall
   lw   $a0, 4($s0)
-  li   $v0, 1
-  syscall
-  la   $a0, _label_16
-  li   $v0, 4
-  syscall
-  lw   $a0, 8($s0)
   li   $v0, 1
   syscall
   la   $a0, _label_14

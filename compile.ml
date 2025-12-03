@@ -1,21 +1,20 @@
-(* compile.ml *)
 open Mgoast
 open Mips
 
-(* --- Utilitaires de gestion des labels --- *)
+(* Création labels *)
 let new_label =
   let cpt = ref (-1) in
   fun () -> incr cpt;
   Printf.sprintf "_label_%i" !cpt
 
-(* --- Gestion des Chaînes de caractères (Data segment) --- *)
+(* Gestion string *)
 let strings = ref []
 let add_string s =
   let l = new_label () in
   strings := (l, s) :: !strings;
   l
 
-(* --- Gestion des Structures (Layout) --- *)
+(* Gestion Structures *)
 module StringMap = Map.Make(String)
 
 type struct_layout = {
@@ -34,7 +33,7 @@ let compute_struct_layout s =
   { size = total_size;
   offsets = offsets }
 
-(* --- Gestion des Fonctions (Signatures) --- *)
+(* Gestion Fonctions *)
 type func_sig = { 
   nargs: int;
   rets: typ list; 
@@ -47,7 +46,7 @@ let get_func_sig id =
     Printf.eprintf "Fatal error: Fonction inconnue '%s'\n" id;
   exit 2
 
-(* --- Environnement de Compilation --- *)
+
 type env = {
   vars : (int * typ) StringMap.t;
   next_local : int;
@@ -62,7 +61,7 @@ let empty_env = {
   ret_ptr_offsets = [] 
 }
 
-(* --- Mini-Inférence de type --- *)
+(* Inférence type*)
 let rec get_expr_type env e = match e.edesc with
   | Int _ -> [TInt]
   | Bool _ -> [TBool]
@@ -88,12 +87,12 @@ let rec get_expr_type env e = match e.edesc with
        | _ -> [TBool]) 
   | Print _ -> []
 
+  
 (* --- Génération des fonctions d'impression de structures (AVANCÉ) --- *)
 let compile_struct_printers () =
   StringMap.fold (fun sname layout code ->
     let print_label = "print_struct_" ^ sname in
     
-    (* On trie les champs par offset pour les afficher dans l'ordre *)
     let fields_sorted = 
       List.sort (fun (_, (o1, _)) (_, (o2, _)) -> compare o1 o2) 
                 (StringMap.bindings layout.offsets) 
@@ -101,7 +100,6 @@ let compile_struct_printers () =
     
     let nil_label = new_label () in
     
-    (* Chaînes constantes pour l'affichage *)
     let str_start = add_string "&{" in
     let str_end = add_string "}" in
     let str_nil = add_string "<nil>" in
@@ -109,47 +107,28 @@ let compile_struct_printers () =
     
     let print_code = 
         label print_label
-        (* Vérifier si le pointeur est nil *)
         @@ beqz a0 nil_label
-        
-        (* Sauvegarder $s0 car on va l'utiliser comme pointeur de base stable *)
         @@ addi sp sp (-4) @@ sw s0 0(sp)
-        @@ move s0 a0 (* s0 = adresse de la structure *)
-        
-        (* Afficher "&{" *)
+        @@ move s0 a0
         @@ la a0 str_start @@ li v0 4 @@ syscall
-        
-        (* Boucle sur les champs *)
         @@ (
           let rec loop = function
             | [] -> nop
             | (_, (off, t)) :: rest ->
-                 (* Charger la valeur du champ *)
                  lw a0 off s0
                  @@ (match t with
                      | TString -> li v0 4 @@ syscall
                      | TStruct _ -> 
-                        (* Pour les structures imbriquées, on affiche l'adresse (entier)
-                           pour éviter les récursions infinies potentielles, 
-                           ou on pourrait appeler récursivement le printer.
-                           Ici, on reste simple : adresse *)
                         li v0 1 @@ syscall 
-                     | _ -> li v0 1 @@ syscall (* Int, Bool -> Int *)
+                     | _ -> li v0 1 @@ syscall
                     )
-                 (* Espace si ce n'est pas le dernier champ *)
                  @@ (if rest <> [] then la a0 str_space @@ li v0 4 @@ syscall else nop)
                  @@ loop rest
           in loop fields_sorted
         )
-        
-        (* Afficher "}" *)
         @@ la a0 str_end @@ li v0 4 @@ syscall
-        
-        (* Restaurer $s0 et retour *)
         @@ lw s0 0(sp) @@ addi sp sp 4
         @@ jr ra
-        
-        (* Cas nil *)
         @@ label nil_label
         @@ la a0 str_nil @@ li v0 4 @@ syscall
         @@ jr ra
@@ -157,8 +136,8 @@ let compile_struct_printers () =
     code @@ print_code
   ) !struct_table nop
 
-(* --- Compilation des Expressions --- *)
 
+(* Compilation Expressions *)
 let rec tr_addr env e = match e.edesc with
   | Var id ->
       (try
@@ -227,7 +206,7 @@ and tr_expr env e = match e.edesc with
                  lw t0 off sp @@ 
                  (match t with 
                   | TString -> move a0 t0 @@ li v0 4 @@ syscall 
-                  | TStruct s -> move a0 t0 @@ jal ("print_struct_" ^ s) (* Appel printer struct *)
+                  | TStruct s -> move a0 t0 @@ jal ("print_struct_" ^ s)
                   | _ -> move a0 t0 @@ li v0 1 @@ syscall)
                  @@ (if i < n_rets - 1 then print_space else nop) @@ loop (i+1) in loop 0 in
             alloc_res @@ push_args_code @@ push_ptrs @@ call_code @@ cleanup @@ print_code @@ addi sp sp (4 * n_rets)
@@ -235,7 +214,7 @@ and tr_expr env e = match e.edesc with
             let type_list = get_expr_type env e in
             match type_list with
             | [TString] -> tr_expr env e @@ move a0 t0 @@ li v0 4 @@ syscall
-            | [TStruct s] -> tr_expr env e @@ move a0 t0 @@ jal ("print_struct_" ^ s) (* Appel printer struct *)
+            | [TStruct s] -> tr_expr env e @@ move a0 t0 @@ jal ("print_struct_" ^ s)
             | _ -> tr_expr env e @@ move a0 t0 @@ li v0 1 @@ syscall
       in
       let rec print_args = function
@@ -245,8 +224,9 @@ and tr_expr env e = match e.edesc with
       in
       print_args exps @@ li t0 0
 
-(* --- Compilation des Instructions --- *)
 
+
+(* Compilation Instructions *)
 let rec tr_seq env = function
   | []   -> nop
   | i::s -> tr_instr env i @@ tr_seq env s
@@ -288,8 +268,9 @@ and tr_instr env i = match i.idesc with
   | Inc e -> tr_addr env e @@ push t0 @@ lw t0 0 t0 @@ addi t0 t0 1 @@ pop t1 @@ sw t0 0 t1
   | Dec e -> tr_addr env e @@ push t0 @@ lw t0 0 t0 @@ addi t0 t0 (-1) @@ pop t1 @@ sw t0 0 t1
 
-(* --- Compilation des Fonctions et Programme --- *)
 
+
+(* Compilation Finale *)
 let tr_fun df =
   let sig_f = get_func_sig df.fname.id in
   let exit_lbl = "exit_" ^ df.fname.id in
