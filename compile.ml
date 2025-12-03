@@ -88,7 +88,7 @@ let rec get_expr_type env e = match e.edesc with
   | Print _ -> []
 
   
-(* --- Génération des fonctions d'impression de structures (AVANCÉ) --- *)
+(* print struct *)
 let compile_struct_printers () =
   StringMap.fold (fun sname layout code ->
     let print_label = "print_struct_" ^ sname in

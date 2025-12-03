@@ -3,7 +3,6 @@ open Mgoast
 exception Error of location * string
 let error loc msg = raise (Error (loc, msg))
 
-(* Utilitaires d'affichage et d'erreur *)
 let string_of_typ = function
   | TInt -> "int" | TBool -> "bool" | TString -> "string" | TStruct s -> "*" ^ s
 
@@ -11,7 +10,6 @@ let check loc expected actual =
   if expected <> actual then
     error loc (Printf.sprintf "expected %s, got %s" (string_of_typ expected) (string_of_typ actual))
 
-(* Environnements *)
 module StringMap = Map.Make(String)
 
 type struct_info = { fields : typ StringMap.t; pos : location }
@@ -30,7 +28,9 @@ let check_wf loc env = function
   | TStruct s when not (StringMap.mem s env.structs) -> error loc ("unknown struct: " ^ s)
   | _ -> ()
 
-(* --- PASSE 1 : EXPRESSIONS --- *)
+
+
+(* PASSE 1 : EXPRESSIONS *)
 
 let get_binop_sig = function
   | Add | Sub | Mul | Div | Rem -> TInt, TInt
@@ -79,18 +79,17 @@ and check_args env loc expected args =
     else check arg.eloc t (type_expr env arg)
   ) expected args
 
-(* --- PASSE 2 : INSTRUCTIONS --- *)
+(* PASSE 2 : INSTRUCTIONS *)
 
 let check_lvalue e = match e.edesc with Var _ | Dot _ -> () | _ -> error e.eloc "lvalue required"
 
-(* CORRECTION ICI : suppression de l'argument 'loc' et de la capture 'eloc' *)
 let get_rhs_types env exprs =
   match exprs with
-  | [{edesc = Call(f, args); _}] -> (* Cas spécial f() qui rend n valeurs *)
+  | [{edesc = Call(f, args); _}] ->
       let info = try StringMap.find f.id env.funcs with Not_found -> error f.loc "unknown func" in
       check_args env f.loc info.params args;
       info.rets
-  | _ -> (* Cas standard: liste d'expressions *)
+  | _ ->
       List.map (fun e -> type_expr env e) exprs
 
 let rec check_instr env instr =
@@ -105,7 +104,6 @@ let rec check_instr env instr =
              | _ -> ignore (type_expr env arg)) args
        | _ -> ignore (type_expr env e))
   | Set (lvl, el) ->
-      (* CORRECTION ICI : appel sans instr.iloc *)
       let types = get_rhs_types env el in
       if List.length lvl <> List.length types then error instr.iloc "assign arity mismatch";
       List.iter2 (fun lv t_ex ->
@@ -123,7 +121,6 @@ let rec check_instr env instr =
             check_wf instr.iloc env t;
             List.fold_left (fun acc id -> StringMap.add id.id t acc) env.vars ids
         | None, {idesc=Set(_, el);_}::_ ->
-            (* CORRECTION ICI : appel sans instr.iloc *)
             let types = get_rhs_types env el in
             if List.length ids <> List.length types then error instr.iloc "init arity mismatch";
             List.fold_left2 (fun acc id t -> if id.id="_" then acc else StringMap.add id.id t acc) env.vars ids types
@@ -135,7 +132,6 @@ let rec check_instr env instr =
   | For (c, b) -> check c.eloc TBool (type_expr env c); check_seq env b
   | Block b -> check_seq env b
   | Return el ->
-      (* CORRECTION ICI : appel sans instr.iloc *)
       let types = get_rhs_types env el in
       if List.length types <> List.length env.ret_ty then error instr.iloc "return arity mismatch";
       List.iter2 (fun expected actual -> 
@@ -149,14 +145,12 @@ let rec returns_all seq =
     | Return _ -> true 
     | If(_, b1, b2) -> returns_all b1 && returns_all b2 
     | Block b -> returns_all b
-    (* Le cas Vars doit être avant le cas par défaut *)
     | Vars (_, _, s) -> returns_all s 
-    (* Le cas par défaut doit être le tout dernier *)
     | _ -> false
   ) seq
 
-(* --- MAIN --- *)
 
+(* MAIN *)
 let prog (_, decls) =
   let structs = List.fold_left (fun acc -> function
     | Struct s -> 
@@ -190,6 +184,4 @@ let prog (_, decls) =
   
   if not (StringMap.mem "main" env.funcs) then 
     error (Lexing.dummy_pos, Lexing.dummy_pos) "main required";
-
-  (* AJOUT : On renvoie les déclarations pour la suite de la compilation *)
   decls

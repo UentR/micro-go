@@ -13,7 +13,7 @@
   let mk_ident s startpos endpos = 
     { id = s; loc = (startpos, endpos) }
 
-  (* Fonction utilitaire pour vérifier que la partie gauche d'un := est bien composée de variables *)
+  (* Verif var avant := *)
   let ensure_idents exprs =
     try 
       List.map (fun e -> 
@@ -29,13 +29,10 @@
 %token <string> IDENT
 %token <string> STRING
 
-/* Tokens de Types */
 %token TINT TBOOL TSTRING
 
-/* Mots-clés */
 %token PACKAGE IMPORT TYPE STRUCT FUNC VAR IF ELSE FOR RETURN NEW NIL
 
-/* Ponctuation et Opérateurs */
 %token LPAR RPAR LBRACKET RBRACKET
 %token COMMA SEMI DOT
 %token PLUS MINUS STAR DIV MOD
@@ -45,14 +42,14 @@
 %token COLONEQ EQ_ASSIGN
 %token EOF
 
-/* === PRIORITÉS (Ordre croissant) === */
+
 %left OR
 %left AND
 %left EQ NEQ LT LE GT GE
 %left PLUS MINUS
 %left STAR DIV MOD
 %nonassoc UMINUS NOT
-%left DOT /* Priorité maximale pour résoudre le conflit expr.id */
+%left DOT
 
 %start prog
 %type <Mgoast.program> prog
@@ -102,8 +99,8 @@ typ:
 | STAR id=IDENT { TStruct(id) }
 ;
 
-/* === Instructions === */
 
+/* === Instructions === */
 block:
 | LBRACKET s=instr_list RBRACKET { s }
 ;
@@ -113,16 +110,11 @@ instr_list:
 | i=instr SEMI rest=instr_list 
     { 
       match i.idesc with
-      (* CORRECTION : On fusionne 'rest' avec 'seq' même si 'seq' n'est pas vide.
-         Cela permet de gérer le cas 'var' (seq est vide) ET le cas ':=' (seq contient Set) *)
+      
       | Vars(ids, t, seq) -> [{ i with idesc = Vars(ids, t, seq @ rest) }] 
       | _ -> i :: rest 
     }
 ;
-
-/* Séparation des instructions en "Simple" et "Complexe" 
-   pour résoudre les conflits dans la boucle FOR et l'affectation 
-*/
 
 instr:
 | s=simple_stmt { s }
@@ -130,30 +122,19 @@ instr:
 ;
 
 simple_stmt:
-/* Affectation : x, y = e1, e2 */
-| l=separated_nonempty_list(COMMA, expr) EQ_ASSIGN r=separated_nonempty_list(COMMA, expr) 
-{ mk_instr (Set(l, r)) $startpos $endpos }
-
-/* Déclaration courte : x, y := e1, e2 
-   On parse 'expr' à gauche pour éviter le conflit avec '=', puis on vérifie que ce sont des variables */
+| l=separated_nonempty_list(COMMA, expr) EQ_ASSIGN r=separated_nonempty_list(COMMA, expr) { mk_instr (Set(l, r)) $startpos $endpos }
 | l=separated_nonempty_list(COMMA, expr) COLONEQ r=separated_nonempty_list(COMMA, expr)
     { 
       let ids = ensure_idents l in
       mk_instr (Vars(ids, None, [mk_instr (Set(l, r)) $startpos $endpos])) $startpos $endpos 
     }
-
-/* Incrément / Décrément */
 | e=expr INC { mk_instr (Inc e) $startpos $endpos }
 | e=expr DEC { mk_instr (Dec e) $startpos $endpos }
-
-/* Expression seule (appel de fonction) */
 | e=expr { mk_instr (Expr e) $startpos $endpos }
 ;
 
 compound_stmt:
 | b=block { mk_instr (Block b) $startpos $endpos }
-
-/* IF / ELSE avec priorités pour le Dangling Else */
 | IF c=expr b1=block 
     { mk_instr (If(c, b1, [])) $startpos $endpos }
 | IF c=expr b1=block ELSE b2=compound_stmt
@@ -163,8 +144,6 @@ compound_stmt:
        | If _ -> mk_instr (If(c, b1, [b2])) $startpos $endpos
        | _ -> raise Error 
     }
-
-/* Boucles FOR */
 | FOR b=block 
     { mk_instr (For(mk_expr (Bool true) $startpos $endpos, b)) $startpos $endpos }
 | FOR c=expr b=block 
@@ -176,9 +155,7 @@ compound_stmt:
       let seq = (match init with Some i -> [i] | None -> []) @ [loop] in
       mk_instr (Block seq) $startpos $endpos
     }
-
 | RETURN es=separated_list(COMMA, expr) { mk_instr (Return es) $startpos $endpos }
-
 | VAR ids=separated_nonempty_list(COMMA, ident) t=typ
     { mk_instr (Vars(ids, Some t, [])) $startpos $endpos }
 | VAR ids=separated_nonempty_list(COMMA, ident) EQ_ASSIGN es=separated_nonempty_list(COMMA, expr)
@@ -187,14 +164,13 @@ compound_stmt:
     { mk_instr (Vars(ids, Some t, [mk_instr (Set(List.map (fun id -> mk_expr_loc (Var id) id.loc) ids, es)) $startpos $endpos])) $startpos $endpos }
 ;
 
-
 simple_stmt_opt:
 | /* empty */ { None }
 | s=simple_stmt { Some s }
 ;
 
-/* === Expressions === */
 
+/* === Expressions === */
 expr:
 | e=expr_desc { mk_expr e $startpos $endpos }
 ;
@@ -211,7 +187,7 @@ expr_desc:
     { 
       match e.edesc with
       | Var v when v.id = "fmt" && id.id = "Print" -> Print(es)
-      | _ -> raise Error (* L'AST Call ne supporte que Call(ident), pas expr.ident *)
+      | _ -> raise Error
     }
 | id=ident LPAR es=separated_list(COMMA, expr) RPAR { Call(id, es) }
 | MINUS e=expr %prec UMINUS { Unop(Opp, e) }

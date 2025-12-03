@@ -31,10 +31,9 @@
         
   let buf = Buffer.create 1024
 
+  (* Auto ; *)
   let last_token = ref EOF
-  let next_token = ref None
-
-  (* Fonction wrapper pour mémoriser le token avant de le renvoyer *)
+  let next_token = ref None (* cas } sans \n*)
   let mem_token t =
     last_token := t;
     t
@@ -49,18 +48,17 @@ let number = digit+ | ("0x" | "0X") hex+
 rule real_token = parse
   | ['\n']            { new_line lexbuf; match !last_token with
                         | IDENT _ | INT _ | BOOL _ | STRING _ | NIL | RETURN | INC | DEC | RPAR | RBRACKET | TINT | TBOOL | TSTRING ->
-                        last_token := SEMI; (* Important : on ne veut pas réinsérer un ; au prochain \n *)
+                        last_token := SEMI; (* sinon ;\n;\n;\n... *)
                         SEMI
-                        | _ -> real_token lexbuf  (* On ignore le \n *)
+                        | _ -> real_token lexbuf
                       }
   | "}"  { 
       match !last_token with
       | IDENT _ | INT _ | BOOL _ | STRING _ | NIL | RETURN | INC | DEC |
         RPAR | RBRACKET | TINT | TBOOL | TSTRING ->
-          (* Cas où on doit insérer un point-virgule avant le } *)
-          next_token := Some RBRACKET; (* On garde le } pour la prochaine fois *)
-          last_token := SEMI;          (* On dit qu'on a émis un ; *)
-          SEMI                         (* On renvoie le ; *)
+          next_token := Some RBRACKET;
+          last_token := SEMI;
+          SEMI
       | _ -> 
           mem_token RBRACKET 
     }
@@ -119,12 +117,11 @@ and string = parse
   | eof   { raise (Error "unterminated string") }
 
 {
-  (* Fonction principale appelée par le parser *)
   let token lexbuf =
     match !next_token with
     | Some t -> 
-        next_token := None; (* On vide le tampon *)
-        mem_token t         (* On renvoie le token stocké (RBRACKET) *)
+        next_token := None;
+        mem_token t
     | None -> 
-        real_token lexbuf   (* Sinon on lit normalement *)
+        real_token lexbuf
 }

@@ -1,11 +1,10 @@
-(* mgoc.ml *)
 open Format
 open Lexing
 
 let usage = "usage: mgoc [options] file.go"
 
 let parse_only = ref false
-let type_only = ref false (* Changé à false par défaut pour la partie compilation, ou true selon vos besoins *)
+let type_only = ref false
 
 let spec =
   [ "--parse-only", Arg.Set parse_only, "  stops after parsing";
@@ -36,14 +35,10 @@ let () =
     close_in c;
     if !parse_only then exit 0;
     
-    (* MODIFICATION ICI : On récupère le résultat du typage *)
     let typed_decls = Typechecker.prog f in
     
     if !type_only then exit 0;
 
-    (* AJOUT POUR LA COMPILATION (Partie 2) *)
-    (* Note: f est le programme complet (bool * decl list), typed_decls est la liste des decls *)
-    (* Adaptez l'argument passé à tr_prog selon ce que votre Compile.tr_prog attend *)
     
     let code = Compile.tr_prog typed_decls in 
     let out_name = (Filename.chop_suffix file ".go" ^ ".s") in
