@@ -48,7 +48,7 @@
 %left EQ NEQ LT LE GT GE
 %left PLUS MINUS
 %left STAR DIV MOD
-%nonassoc UMINUS NOT
+%nonassoc NOT
 %left DOT
 
 %start fichier
@@ -74,7 +74,7 @@ decl:
 ;
 
 structure:
-| TYPE id=ident STRUCT LBRACKET vs=separated_list(SEMI, vars) v=option(vars) RBRACKET SEMI
+| TYPE id=ident STRUCT LBRACKET vs=separated_list(SEMI, vars) v=option(SEMI) RBRACKET SEMI
     {
       Struct {
         sname = id; 
@@ -129,7 +129,7 @@ typ:
 
 /* === Instructions === */
 block:
-| LBRACKET is=separated_list(COMMA, instr) i2=option(instr) option(COMMA) RBRACKET
+| LBRACKET is=separated_list(SEMI, instr) i2=option(instr) option(SEMI) RBRACKET
   { 
     let rec aux acc = function
       | [] -> List.rev acc
@@ -228,7 +228,7 @@ expr:
       | _ -> raise Error
     }
 | NOT e=expr                { mk_expr (Unop(Not, e)) $startpos $endpos }
-| MINUS e=expr %prec UMINUS { mk_expr (Unop(Opp, e)) $startpos $endpos }
+| MINUS e=expr { mk_expr (Unop(Opp, e)) $startpos $endpos }
 | e1=expr operation=op e2=expr { mk_expr (Binop(operation, e1, e2)) $startpos $endpos }
 ;
 
