@@ -4,14 +4,17 @@
   exception Error
 
   let mk_expr e startpos endpos = 
-    { edesc = e; eloc = (startpos, endpos) }
+    { edesc = e;
+      eloc = (startpos, endpos) }
   let mk_expr_loc e loc = mk_expr e (fst loc) (snd loc)
 
   let mk_instr i startpos endpos = 
-    { idesc = i; iloc = (startpos, endpos) }
+    { idesc = i;
+      iloc = (startpos, endpos) }
 
   let mk_ident s startpos endpos = 
-    { id = s; loc = (startpos, endpos) }
+    { id = s;
+      loc = (startpos, endpos) }
 
   (* Verif var avant := *)
   let ensure_idents exprs =
@@ -71,12 +74,12 @@ fichier:
 | PACKAGE main=IDENT SEMI f=option(import) decls=list(decl) EOF
     { match f with
       | None -> if main="main" then (false, decls) else raise Error
-      | Some a -> if main="main" && Option.value a ~default:"" = "fmt" then (true, decls) else raise Error
+      | Some s -> if main="main" && s = "fmt" then (true, decls) else raise Error
     }
 ;
 
 import:
-| IMPORT id=IDENT SEMI { Some id }
+| IMPORT s=STRING SEMI { s }
 ;
 
 decl:
@@ -161,7 +164,6 @@ instr_list:
 | i=instr { [i] } /* Cas sans point-virgule final (avant le }) */
 ;
 
-
 instr:
 | s=instr_simple { s }
 | b=block { mk_instr (Block b) $startpos $endpos }
@@ -183,22 +185,13 @@ autre_instr:
     }
 | RETURN es=separated_list(COMMA, expr) { mk_instr (Return es) $startpos $endpos }
 | VAR ids=separated_nonempty_list(COMMA, ident) t=option(typ) es=option(assign_instr)
-    { mk_instr 
-      (Vars(
-          ids,
-          t,
-          [
-            mk_instr 
-            (Set(
-              List.map (fun id -> mk_expr_loc (Var id) id.loc) ids, 
-              Option.value es ~default:[]
-              )
-            ) 
-            $startpos $endpos
-          ]
-          )
-      ) 
-      $startpos $endpos }
+    { 
+      let init = match es with
+        | None -> []
+        | Some e -> [mk_instr (Set(List.map (fun id -> mk_expr_loc (Var id) id.loc) ids, e)) $startpos $endpos]
+      in
+      mk_instr (Vars(ids, t, init)) $startpos $endpos 
+    }
 
 assign_instr:
 | EQ_ASSIGN es=separated_nonempty_list(COMMA, expr) { es }
@@ -245,6 +238,15 @@ expr:
       match e.edesc with
       | Var v when v.id = "fmt" && id.id = "Print" -> mk_expr (Print(es)) $startpos $endpos
       | _ -> raise Error
+    }
+| id=ident LPAR args=separated_list(COMMA, expr) RPAR
+    {
+      if id.id = "new" then
+        match args with
+        | [{edesc=Var({id=s; _}); _}] -> mk_expr (New s) $startpos $endpos
+        | _ -> raise Error
+      else
+        mk_expr (Call(id, args)) $startpos $endpos
     }
 | NOT e=expr                { mk_expr (Unop(Not, e)) $startpos $endpos }
 | MINUS e=expr { mk_expr (Unop(Opp, e)) $startpos $endpos }
