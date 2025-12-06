@@ -79,8 +79,8 @@ structure:
       Struct {
         sname = id; 
         fields = match v with
-          | None -> vs
-          | Some a -> vs @ [Option.value a]
+          | None -> List.flatten vs
+          | Some a -> List.flatten (vs @ [a])
       } 
     }
 ;
@@ -89,13 +89,17 @@ fonction:
 | FUNC id=ident LPAR params=separated_list(COMMA, vars) p=option(vars) RPAR 
   rets=option(type_retour) block=block SEMI
     { 
+      let final_params = 
+        let params_flat = List.flatten params in
+        match p with 
+        | None -> params_flat 
+        | Some last_group -> params_flat @ last_group
+      in
+      
       Fun {
-        fname = id; 
-        params = 
-          match p with 
-          | None -> List.flatten params
-          | Some v -> List.flatten params @ [Option.value v]
-        return = Option.value rests ~default:[]; 
+        fname = id;
+        params = final_params; (* On utilise la variable calculée au-dessus *)
+        return = Option.value rets ~default:[];
         body = block 
       }
     }
@@ -153,9 +157,9 @@ autre_instr:
     { mk_instr (For(c, b)) $startpos $endpos }
 | FOR init=option(instr_simple) SEMI cond=expr SEMI post=option(instr_simple) b=block
     { 
-      let loop_body = b @ (match post with Some p -> [Option.value p] | None -> []) in
+      let loop_body = b @ (match post with Some p -> [p] | None -> []) in
       let loop = mk_instr (For(cond, loop_body)) $startpos $endpos in
-      let seq = (match init with Some i -> [Option.value i] | None -> []) @ [loop] in
+      let seq = (match init with Some i -> [i] | None -> []) @ [loop] in
       mk_instr (Block seq) $startpos $endpos
     }
 | RETURN es=separated_list(COMMA, expr) { mk_instr (Return es) $startpos $endpos }
@@ -163,12 +167,12 @@ autre_instr:
     { mk_instr 
       (Vars(
           ids,
-          Some t,
+          t,
           [
             mk_instr 
             (Set(
               List.map (fun id -> mk_expr_loc (Var id) id.loc) ids, 
-              match es with Some e -> Option.value e | None -> []
+              Option.value es ~default:[]
               )
             ) 
             $startpos $endpos
@@ -210,22 +214,22 @@ instr_if:
 
 /* === Expressions === */
 expr:
-| n=INT         { Int(n) }
-| b=BOOL        { Bool(b) }
-| s=STRING      { String(s) }
-| NIL           { Nil }
+| n=INT         { mk_expr (Int(n)) $startpos $endpos }
+| b=BOOL        { mk_expr (Bool(b)) $startpos $endpos }
+| s=STRING      { mk_expr (String(s)) $startpos $endpos }
+| NIL           { mk_expr (Nil) $startpos $endpos }
 | LPAR e=expr RPAR { e }
-| id=ident      { Var(id) }
-| e=expr DOT id=ident { Dot(e, id) }
+| id=ident      { mk_expr (Var(id)) $startpos $endpos }
+| e=expr DOT id=ident { mk_expr (Dot(e, id)) $startpos $endpos }
 | e=expr DOT id=ident LPAR es=separated_list(COMMA, expr) RPAR 
     { 
       match e.edesc with
-      | Var v when v.id = "fmt" && id.id = "Print" -> Print(es)
+      | Var v when v.id = "fmt" && id.id = "Print" -> mk_expr (Print(es)) $startpos $endpos
       | _ -> raise Error
     }
-| NOT e=expr                { Unop(Not, e) }
-| MINUS e=expr %prec UMINUS { Unop(Opp, e) }
-| e1=expr operation=op e2=expr { Binop(operation, e1, e2) }
+| NOT e=expr                { mk_expr (Unop(Not, e)) $startpos $endpos }
+| MINUS e=expr %prec UMINUS { mk_expr (Unop(Opp, e)) $startpos $endpos }
+| e1=expr operation=op e2=expr { mk_expr (Binop(operation, e1, e2)) $startpos $endpos }
 ;
 
 %inline op:

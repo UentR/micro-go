@@ -1,5 +1,3 @@
-(* Types déclarés pour les champs, pour les variables, et pour les 
-   paramètres et résultats des méthodes. *)
 type typ =
   | TInt
   | TBool
