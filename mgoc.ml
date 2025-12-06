@@ -31,7 +31,7 @@ let () =
   let c = open_in file in
   let lb = Lexing.from_channel c in
   try
-    let f = Mgoparser.prog Mgolexer.token lb in
+    let f = Mgoparser.fichier Mgolexer.token lb in
     close_in c;
     if !parse_only then exit 0;
     

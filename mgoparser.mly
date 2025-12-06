@@ -31,7 +31,7 @@
 
 %token TINT TBOOL TSTRING
 
-%token PACKAGE IMPORT TYPE STRUCT FUNC VAR IF ELSE FOR RETURN NEW NIL
+%token PACKAGE IMPORT TYPE STRUCT FUNC VAR IF ELSE FOR RETURN NIL
 
 %token LPAR RPAR LBRACKET RBRACKET
 %token COMMA SEMI DOT
@@ -51,40 +51,63 @@
 %nonassoc UMINUS NOT
 %left DOT
 
-%start prog
-%type <Mgoast.program> prog
+%start fichier
+%type <Mgoast.program> fichier
 
 %%
 
-/* === Programme Principal === */
-prog:
-| PACKAGE main=IDENT SEMI decls=list(decl) EOF
-    { if main="main" then (false, decls) else raise Error }
-| PACKAGE main=IDENT SEMI IMPORT fmt=STRING SEMI decls=list(decl) EOF
-    { if main="main" && fmt="fmt" then (true, decls) else raise Error } 
+fichier:
+| PACKAGE main=IDENT SEMI f=option(import) decls=list(decl) EOF
+    { match f with
+      | None -> if main="main" then (false, decls) else raise Error
+      | Some a -> if main="main" && Option.value a ~default:"" = "fmt" then (true, decls) else raise Error
+    }
 ;
 
-/* === Déclarations (Top Level) === */
+import:
+| IMPORT id=IDENT SEMI { Some id }
+;
+
 decl:
-| TYPE id=ident STRUCT LBRACKET fl=list(field_decl) RBRACKET SEMI
-    { Struct { sname = id; fields = List.flatten fl } }
-| FUNC id=ident LPAR params=separated_list(COMMA, param_decl) RPAR 
-  rets=return_types block=block SEMI
-    { Fun { fname = id; params = List.flatten params; return = rets; body = block } }
+| f=fonction {f}
+| s=structure {s}
 ;
 
-field_decl:
-| ids=separated_nonempty_list(COMMA, ident) t=typ SEMI { List.map (fun id -> (id, t)) ids }
+structure:
+| TYPE id=ident STRUCT LBRACKET vs=separated_list(SEMI, vars) v=option(vars) RBRACKET SEMI
+    {
+      Struct {
+        sname = id; 
+        fields = match v with
+          | None -> vs
+          | Some a -> vs @ [Option.value a]
+      } 
+    }
 ;
 
-param_decl:
+fonction:
+| FUNC id=ident LPAR params=separated_list(COMMA, vars) p=option(vars) RPAR 
+  rets=option(type_retour) block=block SEMI
+    { 
+      Fun {
+        fname = id; 
+        params = 
+          match p with 
+          | None -> List.flatten params
+          | Some v -> List.flatten params @ [Option.value v]
+        return = Option.value rests ~default:[]; 
+        body = block 
+      }
+    }
+;
+
+vars:
 | ids=separated_nonempty_list(COMMA, ident) t=typ { List.map (fun id -> (id, t)) ids }
 ;
 
-return_types:
-| /* empty */ { [] }
-| t=typ { [t] }
-| LPAR ts=separated_list(COMMA, typ) RPAR { ts }
+type_retour:
+| tr=typ { [tr] }
+| LPAR tr=separated_list(COMMA, typ) option(COMMA) RPAR { tr }
 ;
 
 ident:
@@ -102,26 +125,62 @@ typ:
 
 /* === Instructions === */
 block:
-| LBRACKET s=instr_list RBRACKET { s }
+| LBRACKET is=separated_list(COMMA, instr) i2=option(instr) option(COMMA) RBRACKET
+  { 
+    let rec aux acc = function
+      | [] -> List.rev acc
+      | i :: rest ->
+        match i.idesc with
+        | Vars(_, _, seq) -> aux acc (seq @ rest)
+        | _ -> aux (i :: acc) rest
+    in
+    aux [] (match i2 with Some i -> is @ [i] | None -> is)
+  }
 ;
 
-instr_list:
-| /* empty */ { [] }
-| i=instr SEMI rest=instr_list 
-    { 
-      match i.idesc with
-      
-      | Vars(ids, t, seq) -> [{ i with idesc = Vars(ids, t, seq @ rest) }] 
-      | _ -> i :: rest 
-    }
-;
 
 instr:
-| s=simple_stmt { s }
-| s=compound_stmt { s }
+| s=instr_simple { s }
+| b=block { mk_instr (Block b) $startpos $endpos }
+| i=instr_if { i }
+| a=autre_instr { a }
 ;
 
-simple_stmt:
+autre_instr:
+| FOR b=block 
+    { mk_instr (For(mk_expr (Bool true) $startpos $endpos, b)) $startpos $endpos }
+| FOR c=expr b=block 
+    { mk_instr (For(c, b)) $startpos $endpos }
+| FOR init=option(instr_simple) SEMI cond=expr SEMI post=option(instr_simple) b=block
+    { 
+      let loop_body = b @ (match post with Some p -> [Option.value p] | None -> []) in
+      let loop = mk_instr (For(cond, loop_body)) $startpos $endpos in
+      let seq = (match init with Some i -> [Option.value i] | None -> []) @ [loop] in
+      mk_instr (Block seq) $startpos $endpos
+    }
+| RETURN es=separated_list(COMMA, expr) { mk_instr (Return es) $startpos $endpos }
+| VAR ids=separated_nonempty_list(COMMA, ident) t=option(typ) es=option(assign_instr)
+    { mk_instr 
+      (Vars(
+          ids,
+          Some t,
+          [
+            mk_instr 
+            (Set(
+              List.map (fun id -> mk_expr_loc (Var id) id.loc) ids, 
+              match es with Some e -> Option.value e | None -> []
+              )
+            ) 
+            $startpos $endpos
+          ]
+          )
+      ) 
+      $startpos $endpos }
+
+assign_instr:
+| EQ_ASSIGN es=separated_nonempty_list(COMMA, expr) { es }
+
+instr_simple:
 | l=separated_nonempty_list(COMMA, expr) EQ_ASSIGN r=separated_nonempty_list(COMMA, expr) { mk_instr (Set(l, r)) $startpos $endpos }
 | l=separated_nonempty_list(COMMA, expr) COLONEQ r=separated_nonempty_list(COMMA, expr)
     { 
@@ -133,67 +192,40 @@ simple_stmt:
 | e=expr { mk_instr (Expr e) $startpos $endpos }
 ;
 
-compound_stmt:
-| b=block { mk_instr (Block b) $startpos $endpos }
+instr_if:
 | IF c=expr b1=block 
     { mk_instr (If(c, b1, [])) $startpos $endpos }
-| IF c=expr b1=block ELSE b2=compound_stmt
+| IF c=expr b1=block ELSE b2=block 
+    { 
+       mk_instr (If(c, b1, b2)) $startpos $endpos
+    }
+| IF c=expr b1=block ELSE b2=instr_if
     { 
        match b2.idesc with
        | Block b -> mk_instr (If(c, b1, b)) $startpos $endpos
        | If _ -> mk_instr (If(c, b1, [b2])) $startpos $endpos
        | _ -> raise Error 
     }
-| FOR b=block 
-    { mk_instr (For(mk_expr (Bool true) $startpos $endpos, b)) $startpos $endpos }
-| FOR c=expr b=block 
-    { mk_instr (For(c, b)) $startpos $endpos }
-| FOR init=simple_stmt_opt SEMI cond=expr SEMI post=simple_stmt_opt b=block
-    { 
-      let loop_body = b @ (match post with Some p -> [p] | None -> []) in
-      let loop = mk_instr (For(cond, loop_body)) $startpos $endpos in
-      let seq = (match init with Some i -> [i] | None -> []) @ [loop] in
-      mk_instr (Block seq) $startpos $endpos
-    }
-| RETURN es=separated_list(COMMA, expr) { mk_instr (Return es) $startpos $endpos }
-| VAR ids=separated_nonempty_list(COMMA, ident) t=typ
-    { mk_instr (Vars(ids, Some t, [])) $startpos $endpos }
-| VAR ids=separated_nonempty_list(COMMA, ident) EQ_ASSIGN es=separated_nonempty_list(COMMA, expr)
-    { mk_instr (Vars(ids, None, [mk_instr (Set(List.map (fun id -> mk_expr_loc (Var id) id.loc) ids, es)) $startpos $endpos])) $startpos $endpos }
-| VAR ids=separated_nonempty_list(COMMA, ident) t=typ EQ_ASSIGN es=separated_nonempty_list(COMMA, expr)
-    { mk_instr (Vars(ids, Some t, [mk_instr (Set(List.map (fun id -> mk_expr_loc (Var id) id.loc) ids, es)) $startpos $endpos])) $startpos $endpos }
 ;
-
-simple_stmt_opt:
-| /* empty */ { None }
-| s=simple_stmt { Some s }
-;
-
 
 /* === Expressions === */
 expr:
-| e=expr_desc { mk_expr e $startpos $endpos }
-;
-
-expr_desc:
 | n=INT         { Int(n) }
 | b=BOOL        { Bool(b) }
 | s=STRING      { String(s) }
 | NIL           { Nil }
+| LPAR e=expr RPAR { e }
 | id=ident      { Var(id) }
 | e=expr DOT id=ident { Dot(e, id) }
-| NEW LPAR s=IDENT RPAR { New(s) }
 | e=expr DOT id=ident LPAR es=separated_list(COMMA, expr) RPAR 
     { 
       match e.edesc with
       | Var v when v.id = "fmt" && id.id = "Print" -> Print(es)
       | _ -> raise Error
     }
-| id=ident LPAR es=separated_list(COMMA, expr) RPAR { Call(id, es) }
-| MINUS e=expr %prec UMINUS { Unop(Opp, e) }
 | NOT e=expr                { Unop(Not, e) }
+| MINUS e=expr %prec UMINUS { Unop(Opp, e) }
 | e1=expr operation=op e2=expr { Binop(operation, e1, e2) }
-| LPAR e=expr_desc RPAR { e }
 ;
 
 %inline op:

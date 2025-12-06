@@ -17,7 +17,6 @@
         "else",    ELSE;
         "for",     FOR;
         "return",  RETURN;
-        "new",     NEW;
         "nil",     NIL;
         "true",    BOOL(true);
         "false",   BOOL(false);
