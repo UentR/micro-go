@@ -22,6 +22,17 @@
         | _ -> raise Exit
       ) exprs
     with Exit -> raise Error
+
+    let rec nest_vars = function
+    | [] -> []
+    | i :: rest ->
+      match i.idesc with
+      (* Si c'est une déclaration (var ou :=), on met le reste du bloc DANS la déclaration *)
+      | Vars(ids, t, init) ->
+          let nested_rest = nest_vars rest in
+          [{ i with idesc = Vars(ids, t, init @ nested_rest) }]
+      (* Sinon, on continue normalement *)
+      | _ -> i :: nest_vars rest
 %}
 
 %token <int64> INT
@@ -74,35 +85,38 @@ decl:
 ;
 
 structure:
-| TYPE id=ident STRUCT LBRACKET vs=separated_list(SEMI, vars) v=option(SEMI) RBRACKET SEMI
+| TYPE id=ident STRUCT LBRACKET fields=struct_fields RBRACKET SEMI
     {
       Struct {
-        sname = id; 
-        fields = match v with
-          | None -> List.flatten vs
-          | Some a -> List.flatten (vs @ [a])
+        sname = id;
+        fields = fields
       } 
     }
 ;
 
+struct_fields:
+| /* empty */ { [] }
+| v=vars SEMI rest=struct_fields { v @ rest }
+| v=vars { v }
+;
+
 fonction:
-| FUNC id=ident LPAR params=separated_list(COMMA, vars) p=option(vars) RPAR 
-  rets=option(type_retour) block=block SEMI
+| FUNC id=ident LPAR params=args_list RPAR 
+  rets=option(type_retour) body=block SEMI
     { 
-      let final_params = 
-        let params_flat = List.flatten params in
-        match p with 
-        | None -> params_flat 
-        | Some last_group -> params_flat @ last_group
-      in
-      
       Fun {
         fname = id;
-        params = final_params; (* On utilise la variable calculée au-dessus *)
+        params = params;
         return = Option.value rets ~default:[];
-        body = block 
+        body = body 
       }
     }
+;
+
+args_list:
+| /* empty */ { [] }
+| v=vars COMMA rest=args_list { v @ rest }
+| v=vars { v }
 ;
 
 vars:
@@ -110,8 +124,14 @@ vars:
 ;
 
 type_retour:
-| tr=typ { [tr] }
-| LPAR tr=separated_list(COMMA, typ) option(COMMA) RPAR { tr }
+| t=typ { [t] }
+| LPAR ts=types_list RPAR { ts }
+;
+
+types_list:
+| /* empty */ { [] }
+| t=typ COMMA rest=types_list { t :: rest }
+| t=typ { [t] }
 ;
 
 ident:
@@ -129,17 +149,16 @@ typ:
 
 /* === Instructions === */
 block:
-| LBRACKET is=separated_list(SEMI, instr) i2=option(instr) option(SEMI) RBRACKET
+| LBRACKET instrs=instr_list RBRACKET
   { 
-    let rec aux acc = function
-      | [] -> List.rev acc
-      | i :: rest ->
-        match i.idesc with
-        | Vars(_, _, seq) -> aux acc (seq @ rest)
-        | _ -> aux (i :: acc) rest
-    in
-    aux [] (match i2 with Some i -> is @ [i] | None -> is)
+    nest_vars instrs
   }
+;
+
+instr_list:
+| /* empty */ { [] }
+| i=instr SEMI rest=instr_list { i :: rest }
+| i=instr { [i] } /* Cas sans point-virgule final (avant le }) */
 ;
 
 
