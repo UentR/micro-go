@@ -7,7 +7,7 @@ let new_label =
   fun () -> incr cpt;
   Printf.sprintf "_label_%i" !cpt
 
-(* Gestion string *)
+(* Gestion string (crée label+return "position")*)
 let strings = ref []
 let add_string s =
   let l = new_label () in
@@ -26,8 +26,8 @@ let struct_table = ref StringMap.empty
 
 let compute_struct_layout s =
   let offsets, total_size = 
-    List.fold_left (fun (map, offset) (id, t) ->
-      (StringMap.add id.id (offset, t) map, offset + 4)
+    List.fold_left (
+      fun (map, offset) (id, t) -> (StringMap.add id.id (offset, t) map, offset + 4)
     ) (StringMap.empty, 0) s.fields
   in
   { size = total_size; offsets = offsets }
@@ -122,7 +122,7 @@ let compile_struct_printers () =
     let body = 
         label print_label
         @@ beqz a0 nil_label
-        @@ addi sp sp (-4) @@ sw s0 0(sp)
+        @@ addi sp sp (-4) @@ sw s0 0(sp) 
         @@ move s0 a0
         @@ la a0 str_start @@ li v0 4 @@ syscall
         @@ print_fields fields_sorted
@@ -158,21 +158,6 @@ let rec tr_addr env e = match e.edesc with
           | _ -> exit 2)
   | _ -> Printf.eprintf "Fatal error: L-value attendue\n"; exit 2
 
-(* let rec tr_addr env e = match e.edesc with
-  | Var id ->
-      (try
-        let (offset, _) = StringMap.find id.id env.vars in
-        addi t0 fp offset
-       with Not_found -> exit 2)
-  | Dot (e_struct, id) ->
-      let base_addr = tr_expr env e_struct in
-      match get_expr_type env e_struct with
-          | [TStruct s_name] -> 
-             let layout = StringMap.find s_name !struct_table in
-             let (off, _) = StringMap.find id.id layout.offsets in
-             base_addr @@ addi t0 t0 off
-          | _ -> exit 2
-  | _ -> Printf.eprintf "Fatal error: L-value attendue\n"; exit 2 *)
 
 and tr_expr env e = match e.edesc with
   | Int(n)  -> li t0 (Int64.to_int n)
@@ -325,7 +310,7 @@ and tr_instr env i = match i.idesc with
            
        | _ -> 
          (* Affectation classique *)
-         let push_rhs = List.fold_left (fun code e -> 
+         let push_stack = List.fold_left (fun code e -> 
              code @@ tr_expr env e @@ push t0
          ) nop el in
          
@@ -333,7 +318,7 @@ and tr_instr env i = match i.idesc with
              code @@ tr_addr env lv @@ pop t1 @@ sw t1 0 t0
          ) lvl nop in
          
-         push_rhs @@ pop_assign)
+         push_stack @@ pop_assign)
 
   | Vars (ids, t_opt, seq_body) ->
       let types = match t_opt with 
@@ -392,8 +377,6 @@ and tr_instr env i = match i.idesc with
   | Dec e -> tr_addr env e @@ push t0 @@ lw t0 0 t0 @@ addi t0 t0 (-1) @@ pop t1 @@ sw t0 0 t1
 
 
-
-(* Compilation Finale *)
 let tr_fun df =
   let sig_f = get_func_sig df.fname.id in
   let exit_lbl = "exit_" ^ df.fname.id in
@@ -416,6 +399,7 @@ let tr_main df =
   let env = { empty_env with exit_label = "main_exit" } in
   label "main" @@ move fp sp @@ tr_seq env df.body @@ label "main_exit" @@ li v0 10 @@ syscall
 
+(* Compilation Finale *)
 let tr_prog decls =
   List.iter (function 
     | Struct s -> struct_table := StringMap.add s.sname.id (compute_struct_layout s) !struct_table 
@@ -424,7 +408,7 @@ let tr_prog decls =
   
   let text = List.fold_left (fun code decl -> 
       match decl with 
-      | Fun f when f.fname.id="main" -> code @@ tr_main f 
+      | Fun f when f.fname.id="main" -> code @@ tr_fun f 
       | Fun f -> code @@ tr_fun f 
       | _ -> code
   ) nop decls in

@@ -1,9 +1,17 @@
 .text
 main:
+  addi $sp, $sp, -4
+  sw   $ra, 0($sp)
+  addi $sp, $sp, -4
+  sw   $fp, 0($sp)
   move $fp, $sp
-main_exit:
-  li   $v0, 10
-  syscall
+exit_main:
+  move $sp, $fp
+  lw   $fp, 0($sp)
+  addi $sp, $sp, 4
+  lw   $ra, 0($sp)
+  addi $sp, $sp, 4
+  jr   $ra
 print_struct_S:
   beqz $a0, _label_0
   addi $sp, $sp, -4
